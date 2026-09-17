@@ -55,7 +55,7 @@
     "@helia/libp2p": "2.1.3",
     "@libp2p/bootstrap": "12.0.30",
     "@libp2p/circuit-relay-v2": "4.2.12",
-    "@libp2p/identify": "4.1.13",
+    "@libp2p/identify": "4.1.14",
     "@libp2p/kad-dht": "16.4.4",
     "@libp2p/mplex": "12.0.30",
     "@libp2p/ping": "3.1.12",
