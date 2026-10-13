@@ -1077,8 +1077,7 @@ test('keeps every observatory layer separated across the responsive matrix', asy
       // A clipped, semantically available layer can have a zero-area
       // parent rectangle. A line or point inside a layer is not overlap.
       const hasArea = (candidate: (typeof rectangles)[number]) =>
-        candidate.left < candidate.right &&
-        candidate.top < candidate.bottom;
+        candidate.left < candidate.right && candidate.top < candidate.bottom;
       const overlaps = rectangles.flatMap((rectangle, index) =>
         rectangles.slice(index + 1).flatMap((other) => {
           const horizontal =
