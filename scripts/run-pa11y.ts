@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import puppeteer from 'puppeteer';
+import puppeteer, { type Page } from 'puppeteer';
 
 interface Pa11yIssue {
   readonly code?: string;
@@ -16,6 +16,8 @@ interface Pa11yResult {
 
 interface Pa11yOptions {
   readonly browser: Awaited<ReturnType<typeof puppeteer.launch>>;
+  readonly page?: Page;
+  readonly ignoreUrl?: boolean;
   readonly runners: readonly ('axe' | 'htmlcs')[];
   readonly standard: 'WCAG2AA' | 'WCAG2A' | 'WCAG2AAA';
   readonly timeout: number;
@@ -24,6 +26,10 @@ interface Pa11yOptions {
 
 type Pa11y = (url: string, options: Pa11yOptions) => Promise<Pa11yResult>;
 
+// Pa11y's built-in navigation waits for networkidle2, which never settles while
+// Helia keeps bootstrap and DNSaddr requests running. Wait for the DOM instead.
+const PAGE_READY_TIMEOUT_MS = 120_000; // allows Vite's cold-start dependency optimization
+const APP_READY_SELECTOR = '#universe-main canvas';
 const target = process.env.A11Y_URL?.trim() || 'http://127.0.0.1:4178/';
 const executablePath = findChrome();
 if (executablePath === undefined) {
@@ -47,8 +53,11 @@ const browser = await puppeteer.launch({
 });
 
 try {
+  const page = await openAppPage(browser, target);
   const result = await pa11y(target, {
     browser,
+    page,
+    ignoreUrl: true,
     runners: ['axe', 'htmlcs'],
     standard: 'WCAG2AA',
     timeout: 30_000,
@@ -64,6 +73,21 @@ try {
   console.log(`Pa11y axe + HTML CodeSniffer: 0 issues (${target})`);
 } finally {
   await browser.close();
+}
+
+async function openAppPage(
+  browser: Awaited<ReturnType<typeof puppeteer.launch>>,
+  url: string,
+): Promise<Page> {
+  const page = await browser.newPage();
+  await page.goto(url, {
+    waitUntil: 'domcontentloaded',
+    timeout: PAGE_READY_TIMEOUT_MS,
+  });
+  await page.waitForSelector(APP_READY_SELECTOR, {
+    timeout: PAGE_READY_TIMEOUT_MS,
+  });
+  return page;
 }
 
 function findChrome(): string | undefined {
