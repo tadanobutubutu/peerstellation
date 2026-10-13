@@ -146,7 +146,7 @@
   },
   "overrides": {
     "@libp2p/gossipsub": "17.1.1",
-    "@node-datachannel/android-arm64": "0.33.0",
+    "@node-datachannel/android-arm64": "0.33.4",
     "@puppeteer/browsers": "3.2.2",
     "puppeteer": "25.10.0",
     "puppeteer-core": "25.10.0"
