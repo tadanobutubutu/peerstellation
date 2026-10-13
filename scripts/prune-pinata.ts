@@ -16,7 +16,7 @@ interface PinataPin {
 }
 
 interface PinataPinList {
-  rows: unknown[];
+  rows: PinataPin[];
 }
 
 interface PrunePinataOptions {
