@@ -1,0 +1,11 @@
+{
+  "extends": ["markuplint:recommended"],
+  "rules": {
+    "class-naming": false,
+    "invalid-attr": false,
+    "landmark-roles": false,
+    "permitted-contents": false,
+    "required-h1": false,
+    "wai-aria": false
+  }
+}

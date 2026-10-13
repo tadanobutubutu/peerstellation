@@ -44,11 +44,12 @@ export class KuboRefreshScheduler {
 
   async #run(): Promise<void> {
     if (!this.#active) return;
-    let shouldContinue = false;
+    let shouldContinue: boolean;
     try {
       shouldContinue = await this.#refresh();
     } catch {
-      shouldContinue = false;
+      this.stop();
+      return;
     }
     if (!this.#active) return;
     if (!shouldContinue) {

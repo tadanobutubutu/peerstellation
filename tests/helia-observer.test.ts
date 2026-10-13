@@ -207,6 +207,7 @@ describe('Helia observer', () => {
       type: 'disconnected',
       peerId: '12D3KooWRemote',
       observedAt: 200,
+      source: 'browser',
     });
 
     await observer.stop();

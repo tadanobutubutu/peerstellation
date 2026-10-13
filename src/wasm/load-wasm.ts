@@ -1,4 +1,5 @@
 import type { PeerRecord, PeerSource, PeerStatus } from '../network/peer-types';
+import { MIN_PEER_WORLD_RADIUS } from '../scene/spatial-scale';
 
 type WasmNumberFunction = (...arguments_: number[]) => number;
 
@@ -58,7 +59,7 @@ export async function loadPhysicsWasm(
   const edgeColorsPointer = integerResult(instance, 'edge_colors_ptr');
 
   if (maximum <= 0 || maximum > 100_000) {
-    throw new Error('Zig WASMが不正なmax_nodesを返しました。');
+    throw new Error('Rust physics WASMが不正なmax_nodesを返しました。');
   }
   createFloat32View(memory, positionsPointer, maximum * 3);
   createFloat32View(memory, edgePositionsPointer, maximum * 12);
@@ -74,7 +75,7 @@ export async function loadPhysicsWasm(
       seedNode(
         Math.trunc(index),
         Math.trunc(seed),
-        Math.min(76, Math.max(8, finiteOr(radius, 40))),
+        Math.max(MIN_PEER_WORLD_RADIUS, finiteOr(radius, 40)),
         Math.min(4, Math.max(0, Math.trunc(finiteOr(sector, 4)))),
       );
     },
@@ -274,7 +275,7 @@ function statusCode(status: PeerStatus): number {
 }
 
 function sourceCode(source: PeerSource | undefined): number {
-  // The Zig kernel uses zero for the browser origin. `both` retains the
+  // The Rust kernel uses zero for the browser origin. `both` retains the
   // browser line because the same peer has been observed by both sources.
   return source === 'kubo'
     ? 1

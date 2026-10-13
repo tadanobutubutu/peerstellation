@@ -153,6 +153,33 @@ function reduceRecord(
         return seen;
       }
 
+      // Browser Helia and local Kubo are independent nodes. If a peer was
+      // observed by both, a source-scoped disconnect must only remove that
+      // source. Keep the other live source connected and downgrade provenance
+      // from `both` so counters and evidence lines stay truthful.
+      if (current?.status === 'connected' && current.source === 'both') {
+        if (observation.source === 'browser') {
+          return {
+            ...seen,
+            status: 'connected',
+            statusObservedAt: observation.observedAt,
+            source: 'kubo',
+            latencyMs: undefined,
+            latencyObservedAt: undefined,
+          };
+        }
+        if (observation.source === 'kubo') {
+          return {
+            ...seen,
+            status: 'connected',
+            statusObservedAt: observation.observedAt,
+            source: 'browser',
+            latencyMs: undefined,
+            latencyObservedAt: undefined,
+          };
+        }
+      }
+
       return {
         ...seen,
         status: 'disconnected',

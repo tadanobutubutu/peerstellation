@@ -1,3 +1,4 @@
+import { type ResolvedLocale, translate } from '../i18n/i18n';
 import type { PeerRecord } from '../network/peer-types';
 
 const STATUS_ORDER: Record<PeerRecord['status'], number> = {
@@ -13,6 +14,8 @@ export function renderPeerList(
   emptyState: HTMLElement,
   peers: readonly PeerRecord[],
   now = Date.now(),
+  locale: ResolvedLocale = 'en',
+  forceRebuild = false,
 ): void {
   const ordered = [...peers].sort(
     (left, right) =>
@@ -20,6 +23,14 @@ export function renderPeerList(
       right.lastSeenAt - left.lastSeenAt ||
       left.peerId.localeCompare(right.peerId),
   );
+  // Detail terms are created with the active locale. A locale switch can
+  // arrive while rows are already retained, so invalidate the row cache once
+  // rather than leaving stale <dt> labels in an otherwise updated list.
+  const localeChanged = list.dataset.locale !== locale;
+  if (forceRebuild || localeChanged) {
+    list.replaceChildren();
+    list.dataset.locale = locale;
+  }
   const existing = new Map<string, HTMLLIElement>();
   for (const child of list.children) {
     if (child instanceof HTMLLIElement && child.dataset.peerId) {
@@ -31,8 +42,8 @@ export function renderPeerList(
   let insertionPoint = list.firstElementChild;
   for (const peer of ordered) {
     retainedPeerIds.add(peer.peerId);
-    const item = existing.get(peer.peerId) ?? createPeerItem(peer);
-    updatePeerItem(item, peer, now);
+    const item = existing.get(peer.peerId) ?? createPeerItem(peer, locale);
+    updatePeerItem(item, peer, now, locale);
 
     if (item !== insertionPoint) {
       // Preserve the active element when a live latency/status update moves the
@@ -65,7 +76,10 @@ export function renderPeerList(
   emptyState.hidden = ordered.length > 0;
 }
 
-function createPeerItem(peer: PeerRecord): HTMLLIElement {
+function createPeerItem(
+  peer: PeerRecord,
+  locale: ResolvedLocale,
+): HTMLLIElement {
   const item = document.createElement('li');
   const button = document.createElement('button');
   const dot = document.createElement('span');
@@ -98,43 +112,76 @@ function createPeerItem(peer: PeerRecord): HTMLLIElement {
   details.id = detailsId;
   details.hidden = true;
   details.append(
-    detail('Full peer ID', 'peer-id', peer.peerId),
-    detail('State', 'status', statusLabel(peer.status)),
-    detail('Direction', 'direction', peer.direction ?? 'Not observed'),
-    detail('Transport', 'transport', peer.transport ?? 'Not observed'),
+    detail(translate(locale, 'fullPeerId'), 'peer-id', peer.peerId),
     detail(
-      'Protocols',
+      translate(locale, 'state'),
+      'status',
+      statusLabel(peer.status, locale),
+    ),
+    detail(
+      translate(locale, 'direction'),
+      'direction',
+      peer.direction ?? translate(locale, 'notObserved'),
+    ),
+    detail(
+      translate(locale, 'transport'),
+      'transport',
+      peer.transport ?? translate(locale, 'notObserved'),
+    ),
+    detail(
+      translate(locale, 'protocols'),
       'protocols',
-      peer.protocols?.join(', ') || 'Not observed',
+      peer.protocols?.join(', ') || translate(locale, 'notObserved'),
     ),
-    detail('Agent', 'agent', peer.agentVersion ?? 'Not observed'),
     detail(
-      'Protocol version',
+      translate(locale, 'agent'),
+      'agent',
+      peer.agentVersion ?? translate(locale, 'notObserved'),
+    ),
+    detail(
+      translate(locale, 'protocolVersion'),
       'protocol-version',
-      peer.protocolVersion ?? 'Not observed',
+      peer.protocolVersion ?? translate(locale, 'notObserved'),
     ),
     detail(
-      'Addresses',
+      translate(locale, 'addresses'),
       'addresses',
       peer.addressCount === undefined
-        ? 'Not observed'
-        : String(peer.addressCount),
+        ? translate(locale, 'notObserved')
+        : formatInteger(peer.addressCount, locale),
     ),
     detail(
-      'Relay',
+      translate(locale, 'relay'),
       'relay',
-      peer.relayPeerId === undefined ? 'Not observed' : peer.relayPeerId,
+      peer.relayPeerId === undefined
+        ? translate(locale, 'notObserved')
+        : peer.relayPeerId,
     ),
-    detail('Source', 'source', sourceLabel(peer.source)),
-    detail('Latency', 'latency-detail', latencyLabel(peer.latencyMs)),
-    observedTimeDetail('Last observed', 'last-seen', peer.lastSeenAt),
+    detail(
+      translate(locale, 'source'),
+      'source',
+      sourceLabel(peer.source, locale),
+    ),
+    detail(
+      translate(locale, 'latency'),
+      'latency-detail',
+      latencyLabel(peer.latencyMs, locale),
+    ),
+    observedTimeDetail(
+      translate(locale, 'lastObserved'),
+      'last-seen',
+      peer.lastSeenAt,
+      locale,
+    ),
   );
 
   button.addEventListener('click', () => {
     const expanded = button.getAttribute('aria-expanded') === 'true';
     button.setAttribute('aria-expanded', String(!expanded));
     details.hidden = expanded;
-    updateButtonLabelFromDataset(button);
+    const buttonLocale =
+      (button.dataset.locale as ResolvedLocale | undefined) ?? 'en';
+    updateButtonLabelFromDataset(button, buttonLocale);
   });
 
   item.append(button, details);
@@ -145,57 +192,67 @@ function updatePeerItem(
   item: HTMLLIElement,
   peer: PeerRecord,
   now: number,
+  locale: ResolvedLocale,
 ): void {
   item.dataset.peerId = peer.peerId;
   const button = requiredDescendant<HTMLButtonElement>(item, '.peer-row');
   button.dataset.status = peer.status;
   button.dataset.source = peer.source ?? 'browser';
   button.dataset.peerId = peer.peerId;
+  button.dataset.locale = locale;
   button.dataset.latency =
     peer.latencyMs === undefined ? '' : String(peer.latencyMs);
-  updateButtonLabel(button, peer.peerId, peer.status, peer.latencyMs);
+  updateButtonLabel(button, peer.peerId, peer.status, peer.latencyMs, locale);
 
   const shortIdentity = requiredField<HTMLElement>(item, 'peer-id-short');
   shortIdentity.textContent = shortPeerId(peer.peerId);
   shortIdentity.title = peer.peerId;
   requiredField<HTMLElement>(item, 'state').textContent =
-    `${statusLabel(peer.status)} · ${relativeTime(peer.lastSeenAt, now)}`;
+    `${statusLabel(peer.status, locale)} · ${relativeTime(peer.lastSeenAt, now, locale)}`;
   requiredField<HTMLElement>(item, 'latency').textContent = latencyLabel(
     peer.latencyMs,
+    locale,
   );
   requiredField<HTMLElement>(item, 'peer-id').textContent = peer.peerId;
   requiredField<HTMLElement>(item, 'status').textContent = statusLabel(
     peer.status,
+    locale,
   );
   requiredField<HTMLElement>(item, 'direction').textContent =
-    peer.direction ?? 'Not observed';
+    peer.direction ?? translate(locale, 'notObserved');
   requiredField<HTMLElement>(item, 'transport').textContent =
-    peer.transport ?? 'Not observed';
+    peer.transport ?? translate(locale, 'notObserved');
   requiredField<HTMLElement>(item, 'protocols').textContent =
-    peer.protocols?.join(', ') || 'Not observed';
+    peer.protocols?.join(', ') || translate(locale, 'notObserved');
   requiredField<HTMLElement>(item, 'agent').textContent =
-    peer.agentVersion ?? 'Not observed';
+    peer.agentVersion ?? translate(locale, 'notObserved');
   requiredField<HTMLElement>(item, 'protocol-version').textContent =
-    peer.protocolVersion ?? 'Not observed';
+    peer.protocolVersion ?? translate(locale, 'notObserved');
   requiredField<HTMLElement>(item, 'addresses').textContent =
     peer.addressCount === undefined
-      ? 'Not observed'
-      : String(peer.addressCount);
+      ? translate(locale, 'notObserved')
+      : formatInteger(peer.addressCount, locale);
   requiredField<HTMLElement>(item, 'relay').textContent =
-    peer.relayPeerId ?? 'Not observed';
+    peer.relayPeerId ?? translate(locale, 'notObserved');
   requiredField<HTMLElement>(item, 'source').textContent = sourceLabel(
     peer.source,
+    locale,
   );
   requiredField<HTMLElement>(item, 'latency-detail').textContent = latencyLabel(
     peer.latencyMs,
+    locale,
   );
   updateObservedTime(
     requiredField<HTMLTimeElement>(item, 'last-seen'),
     peer.lastSeenAt,
+    locale,
   );
 }
 
-function updateButtonLabelFromDataset(button: HTMLButtonElement): void {
+function updateButtonLabelFromDataset(
+  button: HTMLButtonElement,
+  locale: ResolvedLocale,
+): void {
   const status = button.dataset.status;
   if (
     status !== 'connected' &&
@@ -211,6 +268,7 @@ function updateButtonLabelFromDataset(button: HTMLButtonElement): void {
     button.dataset.peerId ?? 'Unknown peer',
     status,
     parsedLatency,
+    locale,
   );
 }
 
@@ -219,11 +277,12 @@ function updateButtonLabel(
   peerId: string,
   status: PeerRecord['status'],
   latencyMs: number | undefined,
+  locale: ResolvedLocale,
 ): void {
   const expanded = button.getAttribute('aria-expanded') === 'true';
   button.setAttribute(
     'aria-label',
-    `${peerId}, ${statusLabel(status)}, ${latencyLabel(latencyMs)}. ${expanded ? 'Hide' : 'Show'} details`,
+    `${peerId}, ${statusLabel(status, locale)}, ${latencyLabel(latencyMs, locale)}. ${expanded ? translate(locale, 'hideDetails') : translate(locale, 'showDetails')}`,
   );
 }
 
@@ -242,6 +301,7 @@ function observedTimeDetail(
   label: string,
   field: string,
   observedAt: number,
+  locale: ResolvedLocale,
 ): HTMLDivElement {
   const wrapper = document.createElement('div');
   const term = document.createElement('dt');
@@ -249,21 +309,25 @@ function observedTimeDetail(
   const time = document.createElement('time');
   term.textContent = label;
   time.dataset.field = field;
-  updateObservedTime(time, observedAt);
+  updateObservedTime(time, observedAt, locale);
   description.append(time);
   wrapper.append(term, description);
   return wrapper;
 }
 
-function updateObservedTime(time: HTMLTimeElement, observedAt: number): void {
+function updateObservedTime(
+  time: HTMLTimeElement,
+  observedAt: number,
+  locale: ResolvedLocale,
+): void {
   const date = new Date(observedAt);
   if (Number.isNaN(date.getTime())) {
     time.removeAttribute('datetime');
-    time.textContent = 'Date unavailable';
+    time.textContent = translate(locale, 'dateUnavailable');
     return;
   }
   time.dateTime = date.toISOString();
-  time.textContent = new Intl.DateTimeFormat(undefined, {
+  time.textContent = new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',
     timeStyle: 'medium',
   }).format(date);
@@ -294,40 +358,70 @@ function shortPeerId(peerId: string): string {
   return `${peerId.slice(0, 14)}…${peerId.slice(-7)}`;
 }
 
-function statusLabel(status: PeerRecord['status']): string {
+function statusLabel(
+  status: PeerRecord['status'],
+  locale: ResolvedLocale,
+): string {
   switch (status) {
     case 'connected':
-      return 'Connected';
+      return translate(locale, 'connected');
     case 'discovered':
-      return 'Discovered';
+      return translate(locale, 'discovered');
     case 'disconnected':
-      return 'Disconnected';
+      return translate(locale, 'disconnected');
   }
 }
 
-function sourceLabel(source: PeerRecord['source']): string {
-  if (source === 'kubo') return 'Local Kubo';
-  if (source === 'both') return 'Browser Helia + Local Kubo';
-  return 'Browser Helia';
+function sourceLabel(
+  source: PeerRecord['source'],
+  locale: ResolvedLocale,
+): string {
+  if (source === 'kubo') return translate(locale, 'localKuboObservations');
+  if (source === 'both') {
+    return `${translate(locale, 'browserHelia')} + ${translate(locale, 'localKuboObservations')}`;
+  }
+  return translate(locale, 'browserHelia');
 }
 
-function latencyLabel(latencyMs: number | undefined): string {
+function latencyLabel(
+  latencyMs: number | undefined,
+  locale: ResolvedLocale,
+): string {
   return latencyMs === undefined
-    ? 'Not measured'
-    : `${Math.round(latencyMs)} ms`;
+    ? translate(locale, 'unmeasured')
+    : `${formatInteger(Math.round(latencyMs), locale)} ms`;
 }
 
-function relativeTime(observedAt: number, now: number): string {
+function formatInteger(value: number, locale: ResolvedLocale): string {
+  try {
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(
+      value,
+    );
+  } catch {
+    return new Intl.NumberFormat('en-US', {
+      maximumFractionDigits: 0,
+    }).format(value);
+  }
+}
+
+function relativeTime(
+  observedAt: number,
+  now: number,
+  locale: ResolvedLocale,
+): string {
   const seconds = Math.max(0, Math.floor((now - observedAt) / 1_000));
-  if (seconds < 5) {
-    return 'just now';
+  try {
+    const formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+    if (seconds < 5) return formatter.format(0, 'second');
+    if (seconds < 60) return formatter.format(-seconds, 'second');
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return formatter.format(-minutes, 'minute');
+    return formatter.format(-Math.floor(minutes / 60), 'hour');
+  } catch {
+    if (seconds < 5) return 'just now';
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    return `${Math.floor(minutes / 60)}h ago`;
   }
-  if (seconds < 60) {
-    return `${seconds}s ago`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-  return `${Math.floor(minutes / 60)}h ago`;
 }

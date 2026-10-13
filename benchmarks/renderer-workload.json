@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "nodeCounts": [256, 512, 1024],
+  "threeFrameCount": 240,
+  "rustFrameCount": 240,
+  "runCount": 3,
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "deviceScaleFactor": 1
+}

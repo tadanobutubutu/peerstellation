@@ -38,6 +38,7 @@ class WorkerHeliaObserver implements HeliaObserver {
   #localPeerId = '';
   #started = false;
   #stopped = false;
+  #startTimer?: ReturnType<typeof globalThis.setTimeout>;
   #startResolve?: () => void;
   #startReject?: (error: Error) => void;
   #stopResolve?: () => void;
@@ -62,7 +63,8 @@ class WorkerHeliaObserver implements HeliaObserver {
     await new Promise<void>((resolve, reject) => {
       this.#startResolve = resolve;
       this.#startReject = reject;
-      globalThis.setTimeout(() => {
+      this.#startTimer = globalThis.setTimeout(() => {
+        this.#startTimer = undefined;
         if (this.#started) return;
         this.#startResolve = undefined;
         this.#startReject = undefined;
@@ -88,6 +90,10 @@ class WorkerHeliaObserver implements HeliaObserver {
   async stop(): Promise<void> {
     if (this.#stopped) return;
     this.#stopped = true;
+    if (this.#startTimer !== undefined) {
+      globalThis.clearTimeout(this.#startTimer);
+      this.#startTimer = undefined;
+    }
     await new Promise<void>((resolve) => {
       this.#stopResolve = resolve;
       globalThis.setTimeout(() => {
@@ -108,6 +114,10 @@ class WorkerHeliaObserver implements HeliaObserver {
 
   #handleEvent(event: WorkerEvent): void {
     if (event.type === 'ready') {
+      if (this.#startTimer !== undefined) {
+        globalThis.clearTimeout(this.#startTimer);
+        this.#startTimer = undefined;
+      }
       this.#localPeerId = event.localPeerId;
       this.#started = true;
       this.#startResolve?.();
@@ -122,6 +132,10 @@ class WorkerHeliaObserver implements HeliaObserver {
       return;
     }
     if (event.type === 'error') {
+      if (this.#startTimer !== undefined) {
+        globalThis.clearTimeout(this.#startTimer);
+        this.#startTimer = undefined;
+      }
       this.#startReject?.(new Error(event.message));
       return;
     }

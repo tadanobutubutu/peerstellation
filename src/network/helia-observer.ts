@@ -19,14 +19,25 @@ import { webRTC, webRTCDirect } from '@libp2p/webrtc';
 import { webSockets } from '@libp2p/websockets';
 import { webTransport } from '@libp2p/webtransport';
 import { createHeliaLight } from 'helia';
-
+import {
+  isInspectorOptIn,
+  requiresExplicitOptIn,
+} from '../ipfs/network-policy';
 import type { PeerConnectionDirection, PeerObservation } from './peer-types';
 
-const DEFAULT_PING_CONCURRENCY = 2;
+// Keep ping work in the Helia worker, but use enough parallel probes for a
+// realistic live view when a desktop Kubo has dozens of connections. The
+// upper bound remains deliberately small so a public visitor cannot turn the
+// browser node into a ping flood.
+const DEFAULT_PING_CONCURRENCY = 4;
 const DEFAULT_PING_INTERVAL_MS = 30_000;
 const DEFAULT_PING_TIMEOUT_MS = 5_000;
-const DHT_DISCOVERY_TIMEOUT_MS = 15_000;
-const MAX_DHT_DISCOVERIES = 128;
+const DHT_DISCOVERY_TIMEOUT_MS = 20_000;
+const DHT_DISCOVERY_INTERVAL_MS = 60_000;
+// Amino Kad-DHT can return substantially more than the old 128-candidate
+// sample. Retain a bounded query, but admit up to the same 512-peer visual
+// working set used by the explorer before the reducer's 2,048 history cap.
+const MAX_DHT_DISCOVERIES = 512;
 const MAX_OBSERVATIONS = 2_048;
 
 type AdapterEvent = 'connected' | 'disconnected' | 'discovered';
@@ -146,6 +157,7 @@ class BrowserHeliaObserver implements HeliaObserver {
   #queuedPeers: ObservablePeer[] = [];
   #unsubscribers: Array<() => void> = [];
   #discoveryController?: AbortController;
+  #discoveryTimer?: ReturnType<typeof globalThis.setTimeout>;
   #stopped = false;
 
   constructor(options: HeliaObserverOptions) {
@@ -207,6 +219,7 @@ class BrowserHeliaObserver implements HeliaObserver {
           type: 'disconnected',
           peerId: remotePeer.toString(),
           observedAt: this.#now(),
+          source: 'browser',
         });
       }),
     ];
@@ -224,31 +237,7 @@ class BrowserHeliaObserver implements HeliaObserver {
     }
 
     this.#observeConnections(adapter.getConnections());
-    if (adapter.discover !== undefined) {
-      const controller = new AbortController();
-      this.#discoveryController = controller;
-      const timeout = globalThis.setTimeout(
-        () => controller.abort(),
-        DHT_DISCOVERY_TIMEOUT_MS,
-      );
-      void adapter
-        .discover((remotePeer) => {
-          const peerId = remotePeer.toString();
-          if (peerId.trim() === '' || peerId === this.#localPeerId) return;
-          this.#emit({
-            type: 'discovered',
-            peerId,
-            observedAt: this.#now(),
-          });
-        }, controller.signal)
-        .catch(() => undefined)
-        .finally(() => {
-          globalThis.clearTimeout(timeout);
-          if (this.#discoveryController === controller) {
-            this.#discoveryController = undefined;
-          }
-        });
-    }
+    this.#startDiscovery(adapter);
   }
 
   snapshot(): readonly PeerObservation[] {
@@ -409,6 +398,42 @@ class BrowserHeliaObserver implements HeliaObserver {
     this.#activePings.get(peerId)?.abort();
   }
 
+  #startDiscovery(adapter: HeliaNetworkAdapter): void {
+    if (this.#stopped || adapter.discover === undefined) return;
+    const controller = new AbortController();
+    this.#discoveryController = controller;
+    const timeout = globalThis.setTimeout(
+      () => controller.abort(),
+      DHT_DISCOVERY_TIMEOUT_MS,
+    );
+    void adapter
+      .discover((remotePeer) => {
+        const peerId = remotePeer.toString();
+        if (peerId.trim() === '' || peerId === this.#localPeerId) return;
+        this.#emit({
+          type: 'discovered',
+          peerId,
+          observedAt: this.#now(),
+        });
+      }, controller.signal)
+      .catch(() => undefined)
+      .finally(() => {
+        globalThis.clearTimeout(timeout);
+        if (this.#discoveryController !== controller) return;
+        this.#discoveryController = undefined;
+        // A single routing query only describes the nearest portion of the
+        // DHT at that moment. Re-run it in the background so a long-lived
+        // observatory can discover new peers without tying discovery to the
+        // render loop or creating overlapping queries.
+        if (!this.#stopped && this.#adapter === adapter) {
+          this.#discoveryTimer = globalThis.setTimeout(() => {
+            this.#discoveryTimer = undefined;
+            this.#startDiscovery(adapter);
+          }, DHT_DISCOVERY_INTERVAL_MS);
+        }
+      });
+  }
+
   async #teardown(): Promise<void> {
     for (const unsubscribe of this.#unsubscribers.splice(0)) {
       unsubscribe();
@@ -419,6 +444,10 @@ class BrowserHeliaObserver implements HeliaObserver {
     this.#activePings.clear();
     this.#queuedPeerIds.clear();
     this.#queuedPeers = [];
+    if (this.#discoveryTimer !== undefined) {
+      globalThis.clearTimeout(this.#discoveryTimer);
+      this.#discoveryTimer = undefined;
+    }
     this.#discoveryController?.abort();
     this.#discoveryController = undefined;
 
@@ -431,6 +460,7 @@ class BrowserHeliaObserver implements HeliaObserver {
 }
 
 async function createDefaultHeliaAdapter(): Promise<HeliaNetworkAdapter> {
+  const inspector = await loadInspectorMetrics();
   const node = withLibp2pLight(createHeliaLight(), {
     addresses: {
       listen: ['/p2p-circuit', '/webrtc'],
@@ -462,6 +492,7 @@ async function createDefaultHeliaAdapter(): Promise<HeliaNetworkAdapter> {
       identifyPush: identifyPush(),
       ping: ping(),
     },
+    ...(inspector === undefined ? {} : { metrics: inspector }),
   });
   await node.start();
   const libp2p = node.libp2p;
@@ -518,6 +549,30 @@ async function createDefaultHeliaAdapter(): Promise<HeliaNetworkAdapter> {
       await node.stop();
     },
   };
+}
+
+async function loadInspectorMetrics(): Promise<
+  | ReturnType<
+      typeof import('@ipshipyard/libp2p-inspector-metrics')['inspectorMetrics']
+    >
+  | undefined
+> {
+  // Inspector uses window.postMessage as an RPC surface. Keep it out of the
+  // production graph and require an explicit development opt-in so a normal
+  // public session cannot expose peer metadata to a browser extension.
+  const search =
+    typeof globalThis.location?.search === 'string'
+      ? globalThis.location.search
+      : '';
+  const enabled =
+    import.meta.env.DEV &&
+    (isInspectorOptIn(search, true) ||
+      requiresExplicitOptIn(import.meta.env.VITE_LIBP2P_INSPECTOR));
+  if (!enabled) return undefined;
+  const { inspectorMetrics } = await import(
+    '@ipshipyard/libp2p-inspector-metrics'
+  );
+  return inspectorMetrics({ rpc: 'window', intervalMs: 2_000 });
 }
 
 function subscribeToLibp2p<M extends ServiceMap>(

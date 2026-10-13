@@ -235,6 +235,50 @@ describe('peer observation reducer', () => {
     ).toBeUndefined();
   });
 
+  it('keeps the other node live when a dual-source peer disconnects', () => {
+    const both = reduce([
+      {
+        type: 'connected',
+        peerId: '12D3KooWDualDisconnect',
+        observedAt: 10,
+        source: 'browser',
+        direction: 'outbound',
+        transport: 'websocket',
+      },
+      {
+        type: 'connected',
+        peerId: '12D3KooWDualDisconnect',
+        observedAt: 20,
+        source: 'kubo',
+        direction: 'outbound',
+        transport: 'tcp',
+      },
+    ]);
+    const browserGone = reducePeerEvent(both, {
+      type: 'disconnected',
+      peerId: '12D3KooWDualDisconnect',
+      observedAt: 30,
+      source: 'browser',
+    });
+    expect(browserGone.peers.get('12D3KooWDualDisconnect')).toMatchObject({
+      source: 'kubo',
+      status: 'connected',
+    });
+    expect(
+      browserGone.peers.get('12D3KooWDualDisconnect')?.latencyMs,
+    ).toBeUndefined();
+    const kuboGone = reducePeerEvent(both, {
+      type: 'disconnected',
+      peerId: '12D3KooWDualDisconnect',
+      observedAt: 30,
+      source: 'kubo',
+    });
+    expect(kuboGone.peers.get('12D3KooWDualDisconnect')).toMatchObject({
+      source: 'browser',
+      status: 'connected',
+    });
+  });
+
   it('bounds the active view and evicts the oldest non-connected peer first', () => {
     let state = emptyPeerState();
     for (let index = 0; index < MAX_TRACKED_PEERS + 1; index += 1) {

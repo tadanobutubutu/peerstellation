@@ -1,10 +1,33 @@
-import type { PeerObservation } from './peer-types';
+import type { PeerObservation, PeerRecord } from './peer-types';
 
 export interface KuboProbeResult {
   readonly localPeerId?: string;
   readonly observations: readonly PeerObservation[];
   readonly peerCount: number;
   readonly truncated: boolean;
+}
+
+/**
+ * Return Kubo peers that disappeared between two successful snapshots.
+ *
+ * The browser and local daemon are independent libp2p nodes.  A peer can be
+ * present in both views, so a Kubo refresh must not turn a still-live browser
+ * connection into a dead star. Records with Kubo provenance (including
+ * `both`) are eligible; the reducer uses the source on the event to retain a
+ * concurrent browser connection. The browser observer remains authoritative
+ * for browser-side disconnects.
+ */
+export function disconnectedKuboPeerIds(
+  previous: ReadonlySet<string>,
+  current: ReadonlySet<string>,
+  records: ReadonlyMap<string, Pick<PeerRecord, 'source'>>,
+): readonly string[] {
+  return [...previous].filter(
+    (peerId) =>
+      !current.has(peerId) &&
+      (records.get(peerId)?.source === 'kubo' ||
+        records.get(peerId)?.source === 'both'),
+  );
 }
 
 /** Maximum number of Kubo records admitted to the active browser view. */
@@ -205,11 +228,31 @@ function latencyMs(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0)
     return value;
   if (typeof value !== 'string') return undefined;
-  const match = /([0-9]+(?:\.[0-9]+)?)\s*(ms|s)?/i.exec(value);
-  if (match === null) return undefined;
-  const number = Number(match[1]);
+  const normalized = value.trim().toLowerCase();
+  const unit = normalized.endsWith('ms')
+    ? 'ms'
+    : normalized.endsWith('s')
+      ? 's'
+      : '';
+  const numeric =
+    unit === '' ? normalized : normalized.slice(0, -unit.length).trim();
+  const decimalIndex = numeric.indexOf('.');
+  if (
+    numeric.length === 0 ||
+    (decimalIndex >= 0 && decimalIndex !== numeric.lastIndexOf('.'))
+  ) {
+    return undefined;
+  }
+  for (const character of numeric) {
+    if (character === '.') continue;
+    if (character < '0' || character > '9') return undefined;
+  }
+  if (decimalIndex === 0 || decimalIndex === numeric.length - 1) {
+    return undefined;
+  }
+  const number = Number(numeric);
   return Number.isFinite(number)
-    ? match[2]?.toLowerCase() === 's'
+    ? unit === 's'
       ? number * 1_000
       : number
     : undefined;

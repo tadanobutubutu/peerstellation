@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -28,6 +28,7 @@ const lighthouseBin = join(
 const temporaryRoot = await mkdtemp(
   join(tmpdir(), 'peerstellation-lighthouse-'),
 );
+const reportOutputRoot = join(process.cwd(), 'artifacts', 'lighthouse');
 const sharedArgs = [
   '--only-categories=performance,accessibility,best-practices,seo,agentic-browsing',
   '--chrome-flags=--headless=new --no-sandbox --disable-dev-shm-usage',
@@ -46,6 +47,8 @@ async function audit(
     ...sharedArgs,
     `--output-path=${reportPath}`,
   ]);
+  await mkdir(reportOutputRoot, { recursive: true });
+  await copyFile(reportPath, join(reportOutputRoot, `${preset}.json`));
   const report = JSON.parse(
     await readFile(reportPath, 'utf8'),
   ) as LighthouseReport;

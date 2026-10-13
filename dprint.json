@@ -1,0 +1,10 @@
+{
+  "incremental": true,
+  "lineWidth": 100,
+  "plugins": ["https://plugins.dprint.dev/json-0.20.0.wasm"],
+  "includes": [
+    "benchmarks/renderer-workload.json",
+    "docs/quality/quality-report.schema.json"
+  ],
+  "excludes": ["node_modules", "dist", "coverage", "artifacts", "public/locales"]
+}

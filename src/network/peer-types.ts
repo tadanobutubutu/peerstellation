@@ -43,6 +43,8 @@ export type PeerObservation =
       readonly type: 'disconnected';
       readonly peerId: string;
       readonly observedAt: number;
+      /** Which independent node observed the disconnect. */
+      readonly source?: PeerSource;
     };
 
 export interface PeerRecord {

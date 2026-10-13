@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://peerstellation.example/schemas/quality-report.json",
+  "type": "object",
+  "required": ["schemaVersion", "startedAt", "finishedAt", "results"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "finishedAt": { "type": "string", "format": "date-time" },
+    "gitRevision": { "type": "string", "minLength": 1 },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "status", "durationMs"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "category": { "type": "string", "minLength": 1 },
+          "status": {
+            "enum": ["pass", "fail", "skip", "not-applicable"]
+          },
+          "durationMs": { "type": "integer", "minimum": 0 },
+          "exitCode": { "type": ["integer", "null"] },
+          "reason": { "type": "string" },
+          "command": { "type": "array", "items": { "type": "string" } },
+          "stdout": { "type": "string" },
+          "stderr": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
