@@ -66,7 +66,7 @@ describe('Pinata deployment', () => {
         expect(entry).toBeInstanceOf(File);
         return (entry as File).name;
       });
-      expect(names).toEqual(['assets/app.css', 'index.html']);
+      expect(names).toEqual(['dist/assets/app.css', 'dist/index.html']);
       expect(body.get('pinataMetadata')).toBe('{"name":"ipfs-universe"}');
       expect(body.get('pinataOptions')).toBeNull();
 
