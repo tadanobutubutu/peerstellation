@@ -125,7 +125,7 @@ export async function pinDirectoryToPinata({
     'pinataMetadata',
     JSON.stringify({
       keyvalues: { channel: 'production', source: 'github-actions' },
-      name: 'peerstellation',
+      name: 'ipfs-universe',
     }),
   );
   form.append('pinataOptions', JSON.stringify({ cidVersion: 1 }));

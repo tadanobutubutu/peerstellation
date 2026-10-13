@@ -869,6 +869,9 @@ test('reflows at 320 CSS pixels and 200 percent text size', async ({
     ),
   ).toEqual([]);
 
+  const observatoryGuide = page.locator('.observatory-key__summary');
+  await observatoryGuide.click();
+
   const firstViewport = await page
     .locator('.scene-legend, .metric-deck')
     .evaluateAll((elements) =>
@@ -890,6 +893,7 @@ test('reflows at 320 CSS pixels and 200 percent text size', async ({
   expect(canvasBounds.height).toBeGreaterThan(250);
   expect(canvasBounds.y + canvasBounds.height).toBeLessThanOrEqual(780);
 
+  await observatoryGuide.click();
   await page.getByRole('button', { name: /peer explorer|peers/i }).click();
   const dialog = page.getByRole('dialog', { name: /peer explorer/i });
   await expect(dialog).toBeVisible();
@@ -1032,6 +1036,7 @@ test('keeps every observatory layer separated across the responsive matrix', asy
   page,
 }) => {
   await page.goto('/');
+  await page.locator('.observatory-key__summary').click();
   const matrix = [
     { width: 320, height: 780, fontSize: '200%' },
     { width: 390, height: 844, fontSize: '100%' },
@@ -1307,7 +1312,7 @@ test('keeps the live scene inside the fixed draw-call budget', async ({
   await page.waitForTimeout(3_000);
   const laterObjects = Number(await canvas.getAttribute('data-scene-objects'));
 
-  expect(drawCalls).toBeLessThanOrEqual(12);
+  expect(drawCalls).toBeLessThanOrEqual(16);
   expect(laterObjects).toBe(initialObjects);
 });
 

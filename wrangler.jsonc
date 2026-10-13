@@ -1,5 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
+  "account_id": "5537939ca46e950db01fa124a51ab4c5",
   "name": "ipfs-universe-gateway",
   "main": "./worker/src/index.ts",
   "compatibility_date": "2026-08-27",
