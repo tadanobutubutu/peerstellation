@@ -8,6 +8,10 @@ import {
 } from './deployment-shared.ts';
 
 const pinataEndpoint = 'https://api.pinata.cloud/pinning/pinFileToIPFS';
+// pinFileToIPFS rejects uploads whose files do not share one top-level folder
+// ("More than one file and/or directory was provided for pinning"), so the
+// build is wrapped in dist/ exactly as the last successful deploy did.
+const pinRootFolder = 'dist';
 
 export interface DeploymentFile {
   absolutePath: string;
@@ -101,7 +105,10 @@ export async function pinDirectoryToPinata({
 
   for (const file of files) {
     const bytes = await readFile(file.absolutePath);
-    const upload = new File([new Uint8Array(bytes)], file.relativePath);
+    const upload = new File(
+      [new Uint8Array(bytes)],
+      `${pinRootFolder}/${file.relativePath}`,
+    );
     form.append('file', upload);
   }
 
