@@ -1,22 +1,20 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "account_id": "5537939ca46e950db01fa124a51ab4c5",
-  "name": "peerstellation",
+  "name": "ipfs-universe-gateway",
+  "main": "./worker/src/index.ts",
   "compatibility_date": "2026-08-27",
   "workers_dev": false,
   "preview_urls": false,
   "routes": [
     {
-      "pattern": "ipfsuniverse.xyz/*",
-      "zone_name": "ipfsuniverse.xyz"
-    },
-    {
-      "pattern": "www.ipfsuniverse.xyz/*",
+      "pattern": "*ipfsuniverse.xyz/*",
       "zone_name": "ipfsuniverse.xyz"
     }
   ],
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "404-page"
   }
