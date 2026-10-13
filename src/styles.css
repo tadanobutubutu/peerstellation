@@ -1599,6 +1599,58 @@ canvas:focus-visible,
   max-width: calc(100% - 18rem);
 }
 
+@media (max-width: 54rem) {
+  /* The desktop HUD layers do not have enough room to stay absolute on a
+     narrow viewport, especially when text is enlarged. In the opened guide,
+     turn those same facts into a scrollable reading column. */
+  .observatory-key[open] {
+    position: fixed;
+    z-index: 12;
+    inset: clamp(4.5rem, 18vw, 5.5rem) 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: rgb(5 5 8 / 98%);
+  }
+
+  .observatory-key[open] > .observatory-key__summary {
+    position: sticky;
+    z-index: 4;
+    inset: auto;
+    inset-block-start: 0;
+    align-self: flex-end;
+  }
+
+  .observatory-key[open] .scene-legend {
+    position: static;
+    width: 100%;
+    max-width: none;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .observatory-key[open] .scene-legend li {
+    min-width: 0;
+    align-items: flex-start;
+    overflow-wrap: anywhere;
+  }
+
+  .observatory-key[open] .scene-legend li > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .observatory-key[open] :is(.node-status, .metric-deck, .scope-note) {
+    position: static;
+    inset: auto;
+    width: auto;
+    max-width: none;
+    margin: 0;
+  }
+}
+
 /* Keep the heading in the accessibility tree while yielding the first paint
    entirely to the sky. Detailed copy is still available to assistive tech. */
 .hero-copy {

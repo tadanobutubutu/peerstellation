@@ -38,6 +38,7 @@
     "deploy:cloudflare": "wrangler deploy",
     "deploy:dnslink": "tsx scripts/update-dnslink.ts",
     "deploy:pinata": "tsx scripts/pin-to-pinata.ts",
+    "deploy:pinata:prune": "tsx scripts/prune-pinata.ts",
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:playwright-trace": "PLAYWRIGHT_TRACE=1 PLAYWRIGHT_OUTPUT_DIR=artifacts/playwright-trace playwright test tests/e2e/universe.spec.ts --grep='shows the 3D observatory immediately' --workers=1",
