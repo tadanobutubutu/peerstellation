@@ -26,6 +26,9 @@ jobs:
       - name: Enable the Rust WebAssembly target
         run: rustup target add wasm32-unknown-unknown
 
+      - name: Install wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.128 --locked
+
       - name: Install dependencies
         run: npm ci
 
@@ -69,6 +72,9 @@ jobs:
 
       - name: Enable the Rust WebAssembly target
         run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.128 --locked
 
       - name: Install dependencies
         run: npm ci
