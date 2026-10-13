@@ -1,5 +1,5 @@
 import { appendFile, lstat, readdir, readFile } from 'node:fs/promises';
-import { extname, join, relative, resolve, sep } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   formatFailure,
@@ -19,17 +19,6 @@ interface PinDirectoryOptions {
   fetcher?: typeof fetch;
   token: string;
 }
-
-const contentTypes: Readonly<Record<string, string>> = {
-  '.css': 'text/css; charset=utf-8',
-  '.html': 'text/html; charset=utf-8',
-  '.ico': 'image/x-icon',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.txt': 'text/plain; charset=utf-8',
-  '.wasm': 'application/wasm',
-  '.webmanifest': 'application/manifest+json',
-};
 
 function toPortablePath(path: string): string {
   return path.split(sep).join('/');
@@ -80,15 +69,12 @@ export async function collectDeploymentFiles(
   return files;
 }
 
-function contentType(path: string): string {
-  return (
-    contentTypes[extname(path).toLowerCase()] ?? 'application/octet-stream'
-  );
-}
-
 async function parsePinataResponse(response: Response): Promise<string> {
   if (!response.ok) {
-    throw new Error(`Pinata upload failed with HTTP ${response.status}.`);
+    const detail = (await response.text()).slice(0, 300);
+    throw new Error(
+      `Pinata upload failed with HTTP ${response.status}: ${detail}`,
+    );
   }
 
   let body: unknown;
@@ -115,20 +101,13 @@ export async function pinDirectoryToPinata({
 
   for (const file of files) {
     const bytes = await readFile(file.absolutePath);
-    const upload = new File([new Uint8Array(bytes)], file.relativePath, {
-      type: contentType(file.relativePath),
-    });
+    const upload = new File([new Uint8Array(bytes)], file.relativePath);
     form.append('file', upload);
   }
 
-  form.append(
-    'pinataMetadata',
-    JSON.stringify({
-      keyvalues: { channel: 'production', source: 'github-actions' },
-      name: 'ipfs-universe',
-    }),
-  );
-  form.append('pinataOptions', JSON.stringify({ cidVersion: 1 }));
+  // Send the request shape that last pinned successfully: a name-only
+  // metadata object and no pinataOptions.
+  form.append('pinataMetadata', JSON.stringify({ name: 'ipfs-universe' }));
 
   const response = await fetcher(pinataEndpoint, {
     body: form,

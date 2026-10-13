@@ -67,7 +67,8 @@ describe('Pinata deployment', () => {
         return (entry as File).name;
       });
       expect(names).toEqual(['assets/app.css', 'index.html']);
-      expect(body.get('pinataOptions')).toBe('{"cidVersion":1}');
+      expect(body.get('pinataMetadata')).toBe('{"name":"ipfs-universe"}');
+      expect(body.get('pinataOptions')).toBeNull();
 
       return Response.json({ IpfsHash: validCid });
     });
