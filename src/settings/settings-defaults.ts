@@ -1,6 +1,24 @@
-import type { QualityPreset, SettingsState } from './settings-types';
+import type {
+  ControlBindings,
+  QualityPreset,
+  SettingsState,
+} from './settings-types';
 
 export const SETTINGS_STORAGE_KEY = 'peerstellation.settings.v1';
+
+export const DEFAULT_CONTROL_BINDINGS: ControlBindings = {
+  moveForward: 'KeyW',
+  moveBackward: 'KeyS',
+  strafeLeft: 'KeyA',
+  strafeRight: 'KeyD',
+  turnLeft: 'ArrowLeft',
+  turnRight: 'ArrowRight',
+  lookUp: 'ArrowUp',
+  lookDown: 'ArrowDown',
+  zoomIn: 'Equal',
+  zoomOut: 'Minus',
+  boost: 'ShiftLeft',
+};
 
 export const DEFAULT_SETTINGS: SettingsState = {
   version: 1,
@@ -20,6 +38,9 @@ export const DEFAULT_SETTINGS: SettingsState = {
   motionScale: 1,
   cameraSensitivity: 1,
   pointerMode: 'hover',
+  controls: DEFAULT_CONTROL_BINDINGS,
+  language: 'auto',
+  regionMode: 'auto',
   showKubo: true,
   showDiscovered: true,
   showLatencyRings: true,

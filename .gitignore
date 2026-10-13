@@ -4,7 +4,12 @@ node_modules/
 # Build output
 dist/
 public/*.wasm
+public/renderer/
+public/__renderer-benchmark/
+src/scene/renderer-wasm/
 wasm/target/
+wasm/renderer-benchmark/target/
+wasm/renderer/target/
 .wrangler/
 
 # IDE
@@ -24,3 +29,12 @@ notion_*.txt
 remote_*.ts
 real_screenshot.png
 test-results/
+artifacts/
+.backstop/
+backstop_data/bitmaps_test/
+backstop_data/bitmaps_reference/
+backstop_data/html_report/
+backstop_data/ci_report/
+.nyc_output/
+cypress/screenshots/
+cypress/videos/

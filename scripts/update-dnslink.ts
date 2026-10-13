@@ -35,11 +35,28 @@ function validateIdentifier(value: string, label: string): string {
 
 function validateDomain(value: string): string {
   const domain = value.trim().toLowerCase();
+  const labels = domain.split('.');
+  const validLabel = (label: string): boolean => {
+    if (label.length < 1 || label.length > 63) return false;
+    if (label.startsWith('-') || label.endsWith('-')) return false;
+    for (const character of label) {
+      const isLetter = character >= 'a' && character <= 'z';
+      const isDigit = character >= '0' && character <= '9';
+      if (!isLetter && !isDigit && character !== '-') return false;
+    }
+    return true;
+  };
+  const tld = labels.at(-1) ?? '';
+  const validTld =
+    tld.length >= 2 &&
+    tld.length <= 63 &&
+    [...tld].every((character) => character >= 'a' && character <= 'z');
   if (
+    domain.length < 1 ||
     domain.length > 253 ||
-    !/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/u.test(
-      domain,
-    )
+    labels.length < 2 ||
+    !validTld ||
+    labels.some((label) => !validLabel(label))
   ) {
     throw new Error('DNSLink domain is invalid.');
   }

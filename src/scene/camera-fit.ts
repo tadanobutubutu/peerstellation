@@ -1,16 +1,20 @@
 const MIN_CAMERA_DISTANCE = 28;
-// Never let a dense import pull the camera so far back that the observatory
-// core becomes a speck. Nodes beyond this composition envelope remain
-// reachable through orbiting and the anchored picker, while the host star
-// keeps its visual weight at every density.
-const MAX_CAMERA_DISTANCE = 180;
-// Automatic framing stays closer than the manual travel envelope so the
-// observatory core keeps visual weight while distant peers remain explorable.
-const MAX_AUTO_CAMERA_DISTANCE = 150;
+// Automatic framing stays closer than manual exploration so the observatory
+// core keeps visual weight while a dense peer field still has room to breathe.
+// This is an automatic composition guard, not a limit on camera controls.
+// A 360-unit envelope gives the first live/discovered peers enough room to
+// enter the composition even when their measured/unmeasured radial signal is
+// in the mid-field. Manual travel remains unbounded by this value, so the
+// observatory core stays legible while exploration can still reach the deep
+// field.
+const MAX_AUTO_CAMERA_DISTANCE = 360;
 // Keep the observatory core visually present on narrow screens. The distance
 // is still derived from the full peer field; this is only a guard against a
 // single outer observation making every node a pinprick.
-const PORTRAIT_FOCAL_MAX_DISTANCE = 145;
+const PORTRAIT_FOCAL_MAX_DISTANCE = 220;
+// A numerical guard for malformed/astronomical bounds. It is deliberately far
+// beyond the generated world and is never used to clamp manual camera input.
+const MAX_FIT_DISTANCE = 1_000_000;
 
 /**
  * Return the camera distance required to keep a spherical peer field inside
@@ -41,7 +45,7 @@ export function fitPerspectiveDistance(
     (safeRadius / Math.max(0.01, Math.sin(limitingAngle))) * safePadding;
 
   return Math.min(
-    MAX_CAMERA_DISTANCE,
+    MAX_FIT_DISTANCE,
     Math.max(
       MIN_CAMERA_DISTANCE,
       Number.isFinite(distance) ? distance : MIN_CAMERA_DISTANCE,
@@ -68,6 +72,22 @@ export function capAutoCameraDistance(
     MAX_AUTO_CAMERA_DISTANCE,
     capPortraitDistance(distance, aspect),
   );
+}
+
+/**
+ * Apply a manual zoom/travel delta without the automatic composition cap.
+ * Only the near plane and non-finite arithmetic are guarded; users can keep
+ * travelling beyond the automatic framing envelope when exploring the field.
+ */
+export function manualCameraDistance(distance: number, delta: number): number {
+  const safeDistance = Number.isFinite(distance)
+    ? Math.max(MIN_CAMERA_DISTANCE, distance)
+    : MIN_CAMERA_DISTANCE;
+  const safeDelta = Number.isFinite(delta) ? delta : 0;
+  const next = safeDistance + safeDelta;
+  return Number.isFinite(next)
+    ? Math.max(MIN_CAMERA_DISTANCE, next)
+    : safeDistance;
 }
 
 /** Find the furthest point from the local browser origin in a packed XYZ view. */
@@ -121,6 +141,5 @@ export function fitCompositionRadius(points: ArrayLike<number>): number {
 }
 
 export const CAMERA_MIN_DISTANCE = MIN_CAMERA_DISTANCE;
-export const CAMERA_MAX_DISTANCE = MAX_CAMERA_DISTANCE;
 export const CAMERA_AUTO_MAX_DISTANCE = MAX_AUTO_CAMERA_DISTANCE;
 export const CAMERA_PORTRAIT_MAX_DISTANCE = PORTRAIT_FOCAL_MAX_DISTANCE;

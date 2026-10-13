@@ -20,7 +20,7 @@ function bytesFetcher(
 }
 
 describe('typed WASM loaders', () => {
-  it('exposes the Zig position buffer without a per-frame copy', async () => {
+  it('exposes the Rust position buffer without a per-frame copy', async () => {
     const bytes = await readFile('public/physics.wasm');
     const physics = await loadPhysicsWasm(
       '/physics.wasm',
@@ -70,7 +70,7 @@ describe('typed WASM loaders', () => {
     ).toBeCloseTo(320, 3);
   });
 
-  it('exposes the Zig edge-layout buffer without a per-frame copy', async () => {
+  it('exposes the Rust edge-layout buffer without a per-frame copy', async () => {
     const bytes = await readFile('public/physics.wasm');
     const physics = await loadPhysicsWasm(
       '/physics.wasm',

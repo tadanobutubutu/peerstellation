@@ -154,6 +154,19 @@ canvas:focus-visible,
   stroke: none;
 }
 
+.brand__orbit {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.brand__orbit--a {
+  transform: rotate(-28deg);
+}
+
+.brand__orbit--b {
+  transform: rotate(32deg);
+}
+
 .brand__name {
   font-size: var(--step--1);
   font-weight: 500;
@@ -405,7 +418,10 @@ canvas:focus-visible,
   display: block;
   width: 100%;
   height: 100%;
-  touch-action: pan-y pinch-zoom;
+  /* The scene owns touch gestures so two-finger pinch reaches the same
+     camera path as wheel/keyboard zoom. Page scrolling remains available
+     outside the full-viewport canvas. */
+  touch-action: none;
 }
 
 #universe-canvas[aria-hidden="true"] {
@@ -494,7 +510,6 @@ canvas:focus-visible,
   background: transparent;
 }
 
-[data-scene="unavailable"] .scene-guide,
 [data-scene="unavailable"] .scene-legend {
   /* Preserve the responsive grid tracks when WebGL fails; removing these
      nodes after first paint would move the status and metric HUD. */
@@ -537,7 +552,7 @@ canvas:focus-visible,
   padding: 0.8rem 0.9rem 0.7rem;
   border: 1px solid rgb(201 255 112 / 48%);
   border-radius: 0.85rem;
-  color: var(--paper);
+  color: var(--paper-muted);
   background: rgb(8 9 13 / 94%);
   box-shadow: 0 1rem 3rem rgb(0 0 0 / 48%), 0 0 2rem rgb(115 251 211 / 12%);
   backdrop-filter: blur(1.1rem);
@@ -763,27 +778,6 @@ canvas:focus-visible,
   background: transparent;
   font-size: var(--step--1);
   font-weight: 800;
-}
-
-.scene-guide {
-  position: absolute;
-  z-index: 3;
-  inset-block-end: clamp(14rem, 22vh, 15.5rem);
-  inset-inline-end: clamp(1rem, 3.25vw, 3.25rem);
-  margin: 0;
-  color: var(--paper-muted);
-  font: var(--step--1)/1.4 var(--mono);
-  letter-spacing: 0.04em;
-  padding: 0.35rem 0.55rem;
-  border: 1px solid rgb(244 242 234 / 24%);
-  border-radius: 999px;
-  background: #050508;
-  backdrop-filter: blur(6px);
-  pointer-events: none;
-}
-
-.scene-guide__mobile {
-  display: none;
 }
 
 .metric-deck {
@@ -1039,6 +1033,108 @@ canvas:focus-visible,
   accent-color: var(--aurora-bright);
 }
 
+.settings-controls ul {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding-inline-start: 1.15rem;
+  color: var(--paper-muted);
+  font-size: var(--step--1);
+  line-height: 1.5;
+}
+
+.settings-bindings {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.settings-bindings label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--paper-muted);
+  font-size: var(--step--1);
+}
+
+.settings-bindings input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.5rem;
+  color: var(--paper);
+  background: var(--ink-soft);
+  font: 800 var(--step--1)/1 var(--mono);
+  text-align: center;
+}
+
+.settings-bindings input:focus {
+  border-color: var(--aurora-bright);
+  outline: 0.1875rem solid var(--aurora-bright);
+  outline-offset: 0.18rem;
+}
+
+.settings-region {
+  margin: 0.8rem 0 0;
+  color: var(--paper-dim);
+  font-size: var(--step--1);
+  line-height: 1.5;
+}
+
+.language-coverage {
+  margin-block-start: 0.85rem;
+  border-block-start: 1px solid var(--line);
+  color: var(--paper-muted);
+  font-size: var(--step--1);
+}
+
+.language-coverage summary {
+  padding-block: 0.75rem;
+  color: var(--paper);
+  cursor: pointer;
+  font-weight: 760;
+}
+
+.language-coverage p {
+  margin: 0 0 0.65rem;
+  line-height: 1.5;
+}
+
+.language-coverage ul {
+  display: grid;
+  max-height: 12rem;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.35rem 0.85rem;
+  margin: 0;
+  padding: 0.75rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  background: rgb(5 5 8 / 62%);
+  list-style: none;
+}
+
+.language-coverage li {
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+.settings-controls {
+  grid-column: 1 / -1;
+}
+
+.settings-controls kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0.08rem 0.3rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.3rem;
+  color: var(--paper);
+  background: var(--ink-soft);
+  font: 0.8em/1.3 var(--mono);
+  text-align: center;
+}
+
 .settings-credits {
   color: var(--paper-muted);
   font-size: var(--step--1);
@@ -1219,7 +1315,7 @@ canvas:focus-visible,
 }
 
 .legend-dot--disconnected {
-  background: var(--danger);
+  background: #697386;
 }
 
 .peer-list {
@@ -1394,21 +1490,6 @@ canvas:focus-visible,
     padding: 0;
   }
 
-  .scene-legend,
-  .node-status,
-  .metric-deck,
-  .scope-note {
-    display: none;
-  }
-
-  .scene-guide__desktop {
-    display: none;
-  }
-
-  .scene-guide__mobile {
-    display: inline;
-  }
-
   .scene-fallback {
     inset-block-start: 47%;
     inset-inline: 1rem;
@@ -1416,6 +1497,10 @@ canvas:focus-visible,
   }
 
   .metric-deck {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-bindings {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1428,13 +1513,90 @@ canvas:focus-visible,
   }
 }
 
-@media (min-width: 55rem) {
-  .scene-legend,
-  .node-status,
-  .metric-deck,
-  .scope-note {
-    display: none;
-  }
+/* The sky and the node-anchored cards lead. The legend, browser node status,
+   live metrics and observation scope share one disclosure (.observatory-key).
+   Closed, they are only withheld from the persistent paint: their DOM, roles,
+   ids and live text stay in the accessibility tree, so neither display: none
+   nor the hidden details slot may remove them. Open, they return to their HUD
+   positions. The same facts stay in the node cards and the peer explorer. */
+.observatory-key::details-content {
+  content-visibility: visible;
+}
+
+.observatory-key:not([open]) :is(.scene-legend, .node-status, .metric-deck, .scope-note) {
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.observatory-key__summary {
+  position: absolute;
+  z-index: 4;
+  inset-block-end: 0.7rem;
+  inset-inline-end: clamp(1rem, 3.25vw, 3.25rem);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border: 1px solid rgb(244 242 234 / 22%);
+  border-radius: 999px;
+  color: var(--paper);
+  /* Opaque backing keeps the disclosure label at a deterministic WCAG
+     contrast ratio over the animated star field. */
+  background: #050508;
+  font-size: var(--step--1);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+  backdrop-filter: blur(0.75rem);
+}
+
+.observatory-key__summary::-webkit-details-marker {
+  display: none;
+}
+
+.observatory-key__summary::before {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--aurora-bright);
+  box-shadow: 0 0 0.75rem rgb(201 255 112 / 60%);
+  content: "";
+}
+
+.observatory-key__summary:hover,
+.observatory-key[open] > .observatory-key__summary {
+  border-color: var(--line);
+  color: var(--paper);
+}
+
+.observatory-key__summary:focus-visible {
+  outline: 0.1875rem solid var(--aurora-bright);
+  outline-offset: 0.25rem;
+}
+
+/* The hero copy is never painted, so the open legend can take the upper-left
+   field, and the metric deck clears the disclosure button. */
+.observatory-key[open] .scene-legend {
+  inset-block-start: clamp(5.5rem, 12vh, 7.25rem);
+}
+
+.observatory-key[open] .metric-deck {
+  inset-block-end: 4rem;
+}
+
+.observatory-key[open] .scope-note {
+  inset-block-end: 1.25rem;
+  max-width: calc(100% - 18rem);
 }
 
 /* Keep the heading in the accessibility tree while yielding the first paint
@@ -1447,9 +1609,24 @@ canvas:focus-visible,
 /* The sky is the first-view product surface. Keep one meaningful heading for
    document navigation, while moving explanatory copy into the accessible
    canvas description and the peer explorer. */
-.hero-copy .eyebrow,
+.hero-copy .eyebrow {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .hero-copy__body {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .hero-copy h1 {
@@ -1642,18 +1819,6 @@ canvas:focus-visible,
   /* Keep the same safe composition for a real 320 CSS-pixel handset, where
      browser zoom may not expose a root style attribute to the page. */
   @media (max-width: 20rem) {
-    .scene-guide {
-      position: fixed;
-      inset: -10000px auto auto -10000px;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      padding: 0;
-      border: 0;
-      clip: rect(0 0 0 0);
-      white-space: nowrap;
-    }
-
     .peer-button__label--short {
       display: none;
     }
@@ -1771,13 +1936,13 @@ canvas:focus-visible,
   }
 
   .scene-legend li.scene-legend__detail {
-    display: none;
-  }
-
-  .scene-guide {
-    inset: auto;
-    justify-self: start;
-    text-align: start;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   .metric-deck {
@@ -1809,7 +1974,41 @@ canvas:focus-visible,
   }
 
   .scope-note strong {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* On phones the open disclosure becomes one scrollable sheet instead of
+     four absolutely placed HUD layers competing with the sky. */
+  .observatory-key[open] {
+    position: absolute;
+    z-index: 4;
+    inset-inline: 0.5rem;
+    inset-block-end: 0.5rem;
+    max-height: calc(100svh - 76px);
+    overflow: auto;
+    padding: 3.75rem 0.9rem 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    background: rgb(5 5 8 / 88%);
+    backdrop-filter: blur(1rem);
+  }
+
+  .observatory-key[open] > .observatory-key__summary {
+    inset-block: 0.5rem auto;
+    inset-inline-end: 0.5rem;
+  }
+
+  .observatory-key[open] :is(.scene-legend, .node-status, .metric-deck, .scope-note) {
+    position: static;
+    width: auto;
+    max-width: none;
+    margin-block-start: 0.75rem;
   }
 
   .peer-dialog {

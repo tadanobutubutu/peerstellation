@@ -20,4 +20,11 @@ describe('peer instance material', () => {
     expect(material.isMeshBasicMaterial).toBe(true);
     expect(material.color.equals(new Color(0xc9ff70))).toBe(true);
   });
+
+  it('keeps a readable minimum marker radius for live peers', () => {
+    mesh = createPeerMesh(false, new Color(0xc9ff70));
+    mesh.geometry.computeBoundingSphere();
+
+    expect(mesh.geometry.boundingSphere?.radius ?? 0).toBeGreaterThan(1.2);
+  });
 });

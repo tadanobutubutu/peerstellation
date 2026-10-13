@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 
+import { shouldCommitUiBatch } from './app-lifecycle';
 import {
   clearPeerHistory,
   closePeerHistory,
@@ -7,7 +8,11 @@ import {
   savePeers,
 } from './db/peer-history';
 import type { HeliaObserver } from './network/helia-observer';
-import { KuboProbeError, probeLocalKubo } from './network/kubo-observer';
+import {
+  disconnectedKuboPeerIds,
+  KuboProbeError,
+  probeLocalKubo,
+} from './network/kubo-observer';
 import { KuboRefreshScheduler } from './network/kubo-refresh';
 import {
   emptyPeerState,
@@ -19,7 +24,7 @@ import type {
   PeerRecord,
   PeerState,
 } from './network/peer-types';
-import type { UniverseScene } from './scene/universe';
+import type { UniverseScene } from './scene/universe-shared';
 import { SETTINGS_STORAGE_KEY } from './settings/settings-defaults';
 import { SettingsStore } from './settings/settings-store';
 import { AppShell } from './ui/app-shell';
@@ -40,6 +45,11 @@ const PERSIST_BATCH_INTERVAL_MS = 5_000;
 // 3D frame on throttled mobile CPUs.
 const NETWORK_BOOT_DELAY_MS = 12_000;
 const MOBILE_NETWORK_BOOT_DELAY_MS = 12_000;
+const GPU_ADAPTER_PROBE_TIMEOUT_MS = 1_500;
+// Yield one short frame to let the parser-created shell paint before the
+// sizeable renderer chunk is evaluated. The canvas still starts immediately
+// after that first paint instead of waiting for network or user input.
+const SCENE_BOOT_DELAY_MS = 120;
 
 if (import.meta.env.DEV) {
   (
@@ -69,6 +79,10 @@ let persistTimer: number | undefined;
 let networkGeneration = 0;
 let appDisposed = false;
 let lastPersisted = new Map<string, string>();
+// Successful Kubo snapshots are diffed so a vanished daemon connection can
+// become an explicit dead-star observation.  Failed/CORS probes leave this
+// set untouched: an unavailable daemon is not evidence of a disconnect.
+let lastKuboPeerIds = new Set<string>();
 const pendingPersistence = new Map<
   string,
   ReturnType<typeof toPersistedPeer>
@@ -105,7 +119,7 @@ shell.onClearHistory(() => {
     .then(() => shell.setStoredPeerCount(0))
     .catch(() => shell.setStoredPeerUnavailable());
 });
-const kuboRefresh = new KuboRefreshScheduler(readLocalKubo);
+const kuboRefresh = new KuboRefreshScheduler(() => readLocalKubo(true));
 shell.onKuboProbe(() => {
   kuboRefresh.stop();
   void readLocalKubo().then((succeeded) => {
@@ -129,23 +143,32 @@ window.addEventListener('pointerdown', wakeNetworkOnIntent, {
 window.addEventListener('keydown', wakeNetworkOnIntent, { once: true });
 
 requestAnimationFrame(() => {
-  void startScene().then(() => {
-    if (universe !== undefined) {
-      shell.markSceneReady();
-      if (import.meta.env.DEV) {
-        (
-          window as Window & { __peerstellationSceneReady?: boolean }
-        ).__peerstellationSceneReady = true;
+  // Keep initialization in a separate task from the parser-created hero and
+  // procedural sky. The task boundary preserves the immediate 3D hand-off
+  // without making renderer setup part of HTML parsing.
+  globalThis.setTimeout(() => {
+    void startScene().then(() => {
+      if (universe !== undefined) {
+        shell.markSceneReady();
+        if (import.meta.env.DEV) {
+          (
+            window as Window & { __peerstellationSceneReady?: boolean }
+          ).__peerstellationSceneReady = true;
+        }
       }
-    }
-    void startDeferredSystems();
-  });
+      void startDeferredSystems();
+    });
+  }, SCENE_BOOT_DELAY_MS);
 });
 
 window.addEventListener(
   'pagehide',
   () => {
     appDisposed = true;
+    if (updateTimer !== undefined) {
+      window.clearTimeout(updateTimer);
+      updateTimer = undefined;
+    }
     kuboRefresh.stop();
     networkGeneration += 1;
     unsubscribeObserver?.();
@@ -164,8 +187,38 @@ window.addEventListener(
 
 async function startScene(): Promise<void> {
   try {
-    const { createUniverseScene } = await import('./scene/universe');
-    universe = await createUniverseScene(canvas, settingsStore.get());
+    const forceThree =
+      new URLSearchParams(window.location.search).get('renderer') === 'three';
+    // wgpu's browser backend requires a usable WebGPU adapter.  Some Chromium
+    // builds expose `navigator.gpu` while returning no adapter (for example
+    // headless/SwiftShader configurations).  Letting wgpu touch the canvas in
+    // that state can poison the WebGL context that the Three fallback needs.
+    // Probe the adapter before importing/initialising Rust so WebGL-only
+    // browsers take the clean fallback path immediately.
+    const canUseRust = !forceThree && (await hasWebGpuAdapter());
+    if (canUseRust) {
+      try {
+        // Keep the sizeable Three.js graph out of the successful Rust path.
+        // It is fetched only after a Rust/WASM or GPU initialization failure.
+        const { createRustUniverseScene } = await import(
+          './scene/rust-universe'
+        );
+        universe = await createRustUniverseScene(canvas, settingsStore.get());
+      } catch (error) {
+        canvas.dataset.rendererFallback =
+          error instanceof Error ? error.name : 'initialization-failed';
+        canvas.dataset.rendererEngine = 'three-fallback';
+      }
+    } else if (!forceThree) {
+      canvas.dataset.rendererFallback = 'webgpu-unavailable';
+      canvas.dataset.rendererEngine = 'three-fallback';
+    }
+    if (universe === undefined) {
+      const { createUniverseScene } = await import('./scene/universe');
+      universe = await createUniverseScene(canvas, settingsStore.get(), {
+        forceThree: true,
+      });
+    }
     universe.applySettings(settingsStore.get());
     universe.onNodeInteraction(({ peer, x, y, pinned }) => {
       shell.showNodeDetails(peer, x, y, pinned);
@@ -221,6 +274,28 @@ async function startScene(): Promise<void> {
   }
 }
 
+async function hasWebGpuAdapter(): Promise<boolean> {
+  const gpu = navigator.gpu;
+  if (gpu === undefined) return false;
+  let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+  try {
+    const adapter = await Promise.race([
+      gpu.requestAdapter({ powerPreference: 'high-performance' }),
+      new Promise<null>((resolve) => {
+        timeout = globalThis.setTimeout(
+          () => resolve(null),
+          GPU_ADAPTER_PROBE_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    return adapter !== null;
+  } catch {
+    return false;
+  } finally {
+    if (timeout !== undefined) globalThis.clearTimeout(timeout);
+  }
+}
+
 function stateFromDevelopmentPeers(peers: readonly PeerRecord[]): PeerState {
   const map = new Map(peers.map((peer) => [peer.peerId, peer] as const));
   let connectedCount = 0;
@@ -272,21 +347,53 @@ async function startDeferredSystems(): Promise<void> {
   await Promise.allSettled([physicsTask, analyticsTask, networkTask]);
 }
 
-async function readLocalKubo(): Promise<boolean> {
-  shell.setKuboStatus(
-    'Requesting /id and /swarm/peers from 127.0.0.1:5001…',
-    true,
-  );
+async function readLocalKubo(silent = false): Promise<boolean> {
+  if (!silent) {
+    shell.setKuboStatus(
+      'Requesting /id and /swarm/peers from 127.0.0.1:5001…',
+      true,
+    );
+  }
   try {
     const result = await probeLocalKubo();
+    const currentKuboPeerIds = new Set(
+      result.observations.flatMap((observation) =>
+        observation.type === 'connected' && observation.source === 'kubo'
+          ? [observation.peerId]
+          : [],
+      ),
+    );
+    // A truncated response contains only the first visual working set; peers
+    // omitted from that slice are not evidence of a disconnect. Reconcile
+    // only complete snapshots, otherwise retain the last complete set until
+    // Kubo returns an untruncated view again.
+    if (!result.truncated) {
+      const observedAt = Date.now();
+      for (const peerId of disconnectedKuboPeerIds(
+        lastKuboPeerIds,
+        currentKuboPeerIds,
+        peerState.peers,
+      )) {
+        acceptObservation({
+          type: 'disconnected',
+          peerId,
+          observedAt,
+          source: 'kubo',
+        });
+      }
+      lastKuboPeerIds = currentKuboPeerIds;
+    }
     for (const observation of result.observations)
       acceptObservation(observation);
-    shell.setKuboStatus(
-      `${result.peerCount} peers observed by local Kubo${result.truncated ? `; first ${result.observations.filter(({ type }) => type === 'connected').length.toLocaleString()} admitted to the view` : ''}. Browser Helia remains a separate node. Refreshing every 15s while enabled.`,
-    );
+    if (!silent) {
+      shell.setKuboStatus(
+        `${result.peerCount} peers observed by local Kubo${result.truncated ? `; first ${result.observations.filter(({ type }) => type === 'connected').length} admitted to the view` : ''}. Browser Helia remains a separate node. Refreshing every 15s while enabled.`,
+      );
+    }
     scheduleUiUpdate();
     return true;
   } catch (error) {
+    if (silent) return false;
     const message =
       error instanceof KuboProbeError && error.code === 'cors'
         ? 'Local Kubo blocked this origin. Add only this local origin to API.HTTPHeaders, then restart IPFS Desktop.'
@@ -405,6 +512,7 @@ function scheduleUiUpdate(): void {
   }
   updateTimer = window.setTimeout(() => {
     updateTimer = undefined;
+    if (!shouldCommitUiBatch(appDisposed)) return;
     const peers = [...peerState.peers.values()];
     const devWindow = window as Window & {
       __peerstellationFreezePeers?: boolean;

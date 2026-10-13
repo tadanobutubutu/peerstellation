@@ -1,0 +1,43 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/main.ts",
+    "scripts/*.ts",
+    "tests/**/*.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "playwright.config.ts"
+  ],
+  "project": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
+  "ignore": ["public/locales/**", "wasm/target/**", "artifacts/**"],
+  "ignoreDependencies": [
+    "@babel/core",
+    "@babel/eslint-parser",
+    "@babel/plugin-syntax-typescript",
+    "@eslint/js",
+    "@percy/cli",
+    "@storybook/addon-a11y",
+    "@storybook/addon-essentials",
+    "@storybook/web-components-vite",
+    "@tailwindcss/vite",
+    "backstopjs",
+    "chromatic",
+    "cypress",
+    "dprint",
+    "eslint",
+    "eslint-plugin-jsx-a11y",
+    "eslint-plugin-security",
+    "knip",
+    "lighthouse",
+    "lit",
+    "lightningcss",
+    "markuplint",
+    "purgecss",
+    "rollup-plugin-visualizer",
+    "storybook",
+    "stylelint",
+    "stylelint-config-standard",
+    "tailwindcss",
+    "web-vitals"
+  ]
+}

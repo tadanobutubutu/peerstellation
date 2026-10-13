@@ -23,11 +23,6 @@ jobs:
           node-version: '24'
           cache: 'npm'
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
-        with:
-          version: 0.15.2
-
       - name: Enable the Rust WebAssembly target
         run: rustup target add wasm32-unknown-unknown
 
@@ -71,11 +66,6 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-
-      - name: Setup Zig
-        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
-        with:
-          version: 0.15.2
 
       - name: Enable the Rust WebAssembly target
         run: rustup target add wasm32-unknown-unknown

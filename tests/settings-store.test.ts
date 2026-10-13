@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_SETTINGS } from '../src/settings/settings-defaults';
+import {
+  DEFAULT_CONTROL_BINDINGS,
+  DEFAULT_SETTINGS,
+} from '../src/settings/settings-defaults';
 import { readSettings, SettingsStore } from '../src/settings/settings-store';
 import type { SettingsStorage } from '../src/settings/settings-types';
 
@@ -54,5 +57,80 @@ describe('settings store', () => {
     store.update({ pointerMode: 'invalid' as never });
     expect(seen).toEqual(['hover:space-2k', 'camera:space-8k']);
     expect(store.get().pointerMode).toBe('hover');
+  });
+
+  it('persists custom controls, boost speed, language, and region privacy mode', () => {
+    const store = new SettingsStore(memoryStorage());
+    const next = store.update({
+      language: 'ja',
+      regionMode: 'off',
+      controls: { moveForward: 'KeyI', boost: 'ControlLeft' },
+    });
+
+    expect(next.language).toBe('ja');
+    expect(next.regionMode).toBe('off');
+    expect(next.controls).toEqual({
+      ...DEFAULT_CONTROL_BINDINGS,
+      moveForward: 'KeyI',
+      boost: 'ControlLeft',
+    });
+    expect(
+      store.update({ controls: { moveBackward: 'KeyK' } }).controls,
+    ).toEqual({
+      ...DEFAULT_CONTROL_BINDINGS,
+      moveForward: 'KeyI',
+      boost: 'ControlLeft',
+      moveBackward: 'KeyK',
+    });
+    expect(
+      readSettings(
+        JSON.stringify({ version: 1, controls: { moveBackward: 'KeyK' } }),
+      ).controls,
+    ).toEqual({ ...DEFAULT_CONTROL_BINDINGS, moveBackward: 'KeyK' });
+  });
+
+  it('does not erase controls or locale when returning to adaptive quality', () => {
+    const store = new SettingsStore(memoryStorage());
+    store.update({
+      language: 'de',
+      regionMode: 'off',
+      controls: { moveForward: 'KeyI' },
+    });
+
+    const next = store.applyPreset('auto');
+    expect(next.language).toBe('de');
+    expect(next.regionMode).toBe('off');
+    expect(next.controls.moveForward).toBe('KeyI');
+    expect(next.qualityMode).toBe('auto');
+  });
+
+  it('rejects malformed control codes and language values', () => {
+    const store = new SettingsStore(memoryStorage());
+    const next = store.update({
+      language: 'pirate' as never,
+      controls: { moveForward: ' ', boost: '⚠️' },
+    });
+
+    expect(next.language).toBe('auto');
+    expect(next.controls).toEqual(DEFAULT_CONTROL_BINDINGS);
+  });
+
+  it('keeps global navigation keys reserved and resolves duplicate bindings', () => {
+    const store = new SettingsStore(memoryStorage());
+    const next = store.update({
+      controls: {
+        moveForward: 'Escape',
+        moveBackward: 'KeyW',
+        strafeLeft: 'KeyW',
+      },
+    });
+
+    expect(next.controls.moveForward).toBe(
+      DEFAULT_CONTROL_BINDINGS.moveForward,
+    );
+    expect(next.controls.moveBackward).toBe(
+      DEFAULT_CONTROL_BINDINGS.moveBackward,
+    );
+    expect(next.controls.strafeLeft).toBe(DEFAULT_CONTROL_BINDINGS.strafeLeft);
   });
 });

@@ -39,7 +39,7 @@ describe('native WebAssembly modules', () => {
     ]);
   });
 
-  it('builds executable Zig and Rust modules with stable raw ABIs', () => {
+  it('builds executable Rust modules with stable raw ABIs', () => {
     for (const name of [
       'init_system',
       'seed_node',
@@ -66,7 +66,7 @@ describe('native WebAssembly modules', () => {
     }
   });
 
-  it('seeds deterministic finite Zig positions and honors motion pause', () => {
+  it('seeds deterministic finite Rust positions and honors motion pause', () => {
     const initialize = exportedFunction(physics.instance, 'init_system');
     const seed = exportedFunction(physics.instance, 'seed_node');
     const step = exportedFunction(physics.instance, 'step');
@@ -102,7 +102,7 @@ describe('native WebAssembly modules', () => {
     expect(moved.every(Number.isFinite)).toBe(true);
   });
 
-  it('maps Zig radial and transport-sector hints into spatial positions', () => {
+  it('maps Rust radial and transport-sector hints into spatial positions', () => {
     const initialize = exportedFunction(physics.instance, 'init_system');
     const seed = exportedFunction(physics.instance, 'seed_node');
     const positionsPointer = exportedFunction(
@@ -132,7 +132,7 @@ describe('native WebAssembly modules', () => {
     expect(Math.abs(angle(0) - angle(3))).toBeGreaterThan(1.5);
   });
 
-  it('clamps Zig work to its fixed capacity', () => {
+  it('clamps Rust work to its fixed capacity', () => {
     const maximum = Number(exportedFunction(physics.instance, 'max_nodes')());
     const initialize = exportedFunction(physics.instance, 'init_system');
     const step = exportedFunction(physics.instance, 'step');
@@ -144,7 +144,7 @@ describe('native WebAssembly modules', () => {
     }).not.toThrow();
   });
 
-  it('computes center and relay edges in the Zig module', () => {
+  it('computes center and relay edges in the Rust module', () => {
     const initialize = exportedFunction(physics.instance, 'init_system');
     const seedNode = exportedFunction(physics.instance, 'seed_node');
     const setPeerMetadata = exportedFunction(

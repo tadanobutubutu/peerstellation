@@ -35,6 +35,20 @@ describe('3D peer layout', () => {
     expect(far).toBeGreaterThan(240);
   });
 
+  it('does not collapse extreme latency into the legacy 2,048-unit ceiling', () => {
+    const radius = radialDistance({
+      peerId: '12D3KooWExtremeLatencyPeer',
+      status: 'connected',
+      source: 'browser',
+      statusObservedAt: 1,
+      firstSeenAt: 1,
+      lastSeenAt: 1,
+      latencyMs: 10_000,
+    });
+
+    expect(radius).toBeGreaterThan(2_048);
+  });
+
   it('keeps Kubo observations in a visually separate outer field', () => {
     const base = {
       status: 'connected' as const,
@@ -71,7 +85,7 @@ describe('3D peer layout', () => {
     });
 
     expect(discoveredRadius).toBeGreaterThanOrEqual(100);
-    expect(discoveredRadius).toBeLessThan(300);
+    expect(discoveredRadius).toBeLessThan(1_500);
   });
 
   it('draws relay edges only when both endpoint peers are observed', () => {
@@ -162,6 +176,44 @@ describe('3D peer layout', () => {
 
     expect(visible).toHaveLength(1_024);
     expect(visible[0]?.peerId).toBe(browserPeer.peerId);
+  });
+
+  it('keeps disconnected peers as low-priority dead stars instead of dropping them', () => {
+    const live = {
+      peerId: '12D3KooWLivePriority',
+      status: 'connected' as const,
+      source: 'browser' as const,
+      statusObservedAt: 3,
+      firstSeenAt: 3,
+      lastSeenAt: 3,
+    };
+    const discovered = {
+      peerId: '12D3KooWDiscoveredPriority',
+      status: 'discovered' as const,
+      statusObservedAt: 2,
+      firstSeenAt: 2,
+      lastSeenAt: 2,
+    };
+    const disconnected = {
+      peerId: '12D3KooWDisconnectedDeadStar',
+      status: 'disconnected' as const,
+      statusObservedAt: 1,
+      firstSeenAt: 1,
+      lastSeenAt: 1,
+    };
+
+    const visible = prioritizeScenePeers([disconnected, discovered, live], 3);
+
+    expect(visible.map(({ peerId }) => peerId)).toEqual([
+      live.peerId,
+      discovered.peerId,
+      disconnected.peerId,
+    ]);
+    expect(
+      prioritizeScenePeers([disconnected, discovered, live], 2).some(
+        ({ peerId }) => peerId === disconnected.peerId,
+      ),
+    ).toBe(false);
   });
 
   it('keeps the observatory core visually dominant as the field grows', () => {

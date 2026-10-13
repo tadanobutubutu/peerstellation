@@ -1,12 +1,12 @@
 # Peerstellation Web Rebuild Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. This historical plan is superseded by the Rust-only implementation documented in `docs/superpowers/plans/2026-09-11-quality-toolchain-rust-renderer.md`.
 
 **Goal:** 実際に観測したIPFSピアを、訪問直後から表示される高品質な3D宇宙として可視化するWeb専用アプリを構築する。
 
-**Architecture:** HTML/CSSの即時シェルとThree.js描画を先に起動し、Heliaを遅延ロードする。型付きpeer reducerがネットワークと表示を分離し、Zig WASMが座標更新、Rust WASMが集約解析を担当する。
+**Architecture:** HTML/CSSの即時シェルとThree.js描画を先に起動し、Heliaを遅延ロードする。型付きpeer reducerがネットワークと表示を分離し、Rust WASMが座標更新・線分生成・集約解析を担当する。
 
-**Tech Stack:** TypeScript、Three.js、Helia/libp2p、Zig WebAssembly、Rust WebAssembly、Vitest、Playwright、axe、Vite、Cloudflare Workers Static Assets、Pinata。
+**Tech Stack:** TypeScript、Three.js、Helia/libp2p、Rust WebAssembly、Vitest、Playwright、axe、Vite、Cloudflare Workers Static Assets、Pinata。
 
 **Spec:** `docs/product-spec.md`
 
@@ -15,7 +15,7 @@
 - 公開データは実測値または「未測定」だけにし、疑似ピアと乱数メトリクスを禁止する。
 - リポジトリ所有の`.js`と`.jsx`は0件、`node_modules`と`dist`は追跡しない。
 - WCAG 2.2 AAを必須、本文コントラストはAAAを目標とする。
-- ZigとRustの両方を実際にWASMへビルドし、TypeScriptから呼び出す。
+- RustだけをWASMへビルドし、TypeScriptから検証済みABIで呼び出す。
 - Heliaは最初の3Dフレーム後に遅延ロードする。
 - CSPでインラインscriptと`unsafe-eval`を許可しない。
 - IPFS Desktopと`~/.ipfs`には変更を加えない。
@@ -142,10 +142,9 @@ Expected: 全ケースPASS。
 export type PersistedPeer = Pick<PeerRecord, 'peerId' | 'status' | 'firstSeenAt' | 'lastSeenAt' | 'latencyMs'>;
 ```
 
-### Task 3: Zig物理WASMとRust解析WASM
+### Task 3: Rust物理・解析WASM
 
 **Files:**
-- Replace: `wasm/particles.zig`
 - Replace: `wasm/Cargo.toml`
 - Replace: `wasm/src/lib.rs`
 - Create: `scripts/build-wasm.ts`
@@ -153,8 +152,7 @@ export type PersistedPeer = Pick<PeerRecord, 'peerId' | 'status' | 'firstSeenAt'
 - Create: `tests/wasm-modules.test.ts`
 
 **Interfaces:**
-- Zig exports: `init_system(count: i32)`, `seed_node(index: i32, seed: i32)`, `step(delta: f32, count: i32, motionScale: f32)`, `positions_ptr(): i32`。
-- Rust exports: `input_ptr(): i32`, `analyze(count: i32): void`, `result_ptr(): i32`。
+- Rust exports: `init_system(count: i32)`, `seed_node(index: i32, seed: i32)`, `step(delta: f32, count: i32, motionScale: f32)`, `positions_ptr(): i32`, `input_ptr(): i32`, `analyze(count: i32): void`, `result_ptr(): i32`。
 - TypeScript produces: `loadPhysicsWasm(url)`, `loadAnalyticsWasm(url)`。
 
 - [ ] **Step 1: 二つの成果物がWASM moduleであることを検査するテストを書く**
@@ -172,23 +170,19 @@ Run: `npm run test:unit -- tests/wasm-modules.test.ts`
 
 Expected: `WebAssembly.validate`がfalse、RustファイルがENOENT。
 
-- [ ] **Step 3: Zigを`build-exe -fno-entry`でWebAssembly moduleへビルドする**
-
-Run: `zig build-exe wasm/particles.zig -target wasm32-freestanding -O ReleaseSmall -fno-entry -rdynamic -femit-bin=public/physics.wasm`
-
-- [ ] **Step 4: Rustを生成JSなしのraw ABIへ変更してビルドする**
+- [ ] **Step 3: Rustを生成JSなしのraw ABIへ変更してビルドする**
 
 Run: `cargo build --manifest-path wasm/Cargo.toml --target wasm32-unknown-unknown --release`
 
 Expected: `wasm/target/wasm32-unknown-unknown/release/ipfs_universe_analytics.wasm`が生成される。
 
-- [ ] **Step 5: TypeScriptビルドスクリプトで二つの成果物を再現可能にする**
+- [ ] **Step 4: TypeScriptビルドスクリプトで二つの成果物を再現可能にする**
 
 Run: `npx tsx scripts/build-wasm.ts`
 
 Expected: `public/physics.wasm`と`public/analytics.wasm`が更新される。
 
-- [ ] **Step 6: ABI境界値と決定性のテストを通す**
+- [ ] **Step 5: ABI境界値と決定性のテストを通す**
 
 Run: `npm run test:unit -- tests/wasm-modules.test.ts`
 

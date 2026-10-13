@@ -1,7 +1,39 @@
 import {
+  abs,
+  attribute,
+  cameraProjectionMatrix,
+  cameraViewMatrix,
+  clamp,
+  color,
+  dot,
+  exp,
+  float,
+  instancedBufferAttribute,
+  length,
+  max,
+  min,
+  mix,
+  modelViewMatrix,
+  modelWorldMatrix,
+  positionGeometry,
+  positionView,
+  pow,
+  screenSize,
+  screenUV,
+  select,
+  smoothstep,
+  sqrt,
+  uniform,
+  uv,
+  varying,
+  vec2,
+  vec3,
+  vec4,
+  vertexIndex,
+} from 'three/tsl';
+import {
   ACESFilmicToneMapping,
   AdditiveBlending,
-  BackSide,
   type Blending,
   BufferAttribute,
   BufferGeometry,
@@ -9,28 +41,33 @@ import {
   Color,
   DynamicDrawUsage,
   EquirectangularReflectionMapping,
+  Euler,
   FogExp2,
   Group,
   IcosahedronGeometry,
+  InstancedBufferGeometry,
+  InstancedInterleavedBuffer,
   InstancedMesh,
+  InterleavedBufferAttribute,
   Line,
-  LineBasicMaterial,
-  LineSegments,
   type Material,
   MathUtils,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
+  MeshBasicNodeMaterial,
   NormalBlending,
   OctahedronGeometry,
   PerspectiveCamera,
+  PlaneGeometry,
   Points,
   PointsMaterial,
+  PointsNodeMaterial,
   type Renderer,
   Scene,
-  SphereGeometry,
   Sprite,
   SpriteMaterial,
+  SpriteNodeMaterial,
   SRGBColorSpace,
   type Texture,
   TextureLoader,
@@ -40,27 +77,34 @@ import {
 } from 'three/webgpu';
 
 import type { PeerRecord } from '../network/peer-types';
-import type { SettingsState } from '../settings/settings-types';
+import { DEFAULT_CONTROL_BINDINGS } from '../settings/settings-defaults';
+import type {
+  ControlBindings,
+  SettingsState,
+} from '../settings/settings-types';
 import type { PhysicsWasm } from '../wasm/load-wasm';
+import { type ArrivalState, arrivalScale, createArrival } from './arrival';
 import {
-  type ArrivalState,
-  advanceArrival,
-  arrivalLinkProgress,
-  arrivalScale,
-  createArrival,
-} from './arrival';
-import {
-  CAMERA_MAX_DISTANCE,
   CAMERA_MIN_DISTANCE,
   capAutoCameraDistance,
   fitCompositionRadius,
   fitPerspectiveDistance,
+  manualCameraDistance,
 } from './camera-fit';
 import {
+  cameraActionForCode,
   cameraIntentFromKeys,
-  isCameraCode,
+  isInteractiveKeyboardTarget,
+  isSceneShortcutCode,
+  keyboardInputCode,
+  pinchZoomDelta,
+  pointerDistance,
   pointerModeLabel,
+  pointerMovedBeyondThreshold,
+  readGamepadIntent,
+  wheelZoomDelta,
 } from './camera-input';
+import { updatePersistentLineIds } from './edge-state';
 import { frameElapsedMs, simulationDeltaSeconds } from './frame-stats';
 import { gpuDurationStats, normalizeGpuDuration } from './gpu-timing';
 import {
@@ -69,7 +113,28 @@ import {
   type QualitySample,
   type QualityTier,
 } from './quality-policy';
-import { MAX_PEER_WORLD_RADIUS } from './spatial-scale';
+import {
+  ABYSSAL_SPEC,
+  advanceMotionClock,
+  advanceSceneArrivals,
+  cameraEaseFactor,
+  coronaScaleForPeerCount,
+  decorationCounts,
+  EVIDENCE_LINE_WIDTH,
+  formatPeerScreenProbe,
+  hostMotionState,
+  PEER_HALO_SPEC,
+  type PeerScreenProbeEntry,
+  type PeerVisualKind,
+  peerMinimumScale,
+  peerScreenProbeState,
+  peerVisualSpec,
+  projectedMarkerRadiusPx,
+  pulseVisualState,
+  SEMANTIC_SCENE_OBJECT_COUNT,
+  coreScaleForPeerCount as sharedCoreScaleForPeerCount,
+  skyboxAssetForMode,
+} from './render-spec';
 
 const SCENE_NODE_LIMIT = 1_024;
 // Rendering still keeps every admitted peer. The numeric solver updates a
@@ -80,7 +145,8 @@ const PHYSICS_NODE_BUDGET = 256;
 const MAX_EXPECTED_DRAW_CALLS_PER_FRAME = 128;
 const CONNECTED_COLOR = new Color(0xc9ff70);
 const DISCOVERED_COLOR = new Color(0xc2b4ff);
-const KUBO_COLOR = new Color(0x7f949b);
+const KUBO_COLOR = new Color(0xf6c76a);
+const DISCONNECTED_COLOR = new Color(0x697386);
 const EDGE_COLOR = new Color(0x9fffe3);
 const PULSE_COLOR = new Color(0x73fbd3);
 
@@ -107,17 +173,69 @@ export interface NodeInteraction {
   readonly pinned: boolean;
 }
 
+export interface UniverseSceneOptions {
+  /** Skip Rust initialisation when the support/visual-comparison override is active. */
+  readonly forceThree?: boolean;
+}
+
 export async function createUniverseScene(
   canvas: HTMLCanvasElement,
   initialSettings?: SettingsState,
+  options?: UniverseSceneOptions,
 ): Promise<UniverseScene> {
+  // Rust + wgpu is the production renderer. The existing Three.js scene is a
+  // deliberately complete compatibility path for browsers where the generated
+  // Rust module is unavailable, the GPU adapter is blocked, or a future shader
+  // regression is detected. A query override is useful for support and visual
+  // comparison without changing the deployed default.
+  const forceThree =
+    options?.forceThree ??
+    new URLSearchParams(window.location.search).get('renderer') === 'three';
+  if (!forceThree) {
+    try {
+      const { createRustUniverseScene } = await import('./rust-universe');
+      const rustScene = await createRustUniverseScene(canvas, initialSettings);
+      return rustScene;
+    } catch (error) {
+      canvas.dataset.rendererFallback =
+        error instanceof Error ? error.name : 'initialization-failed';
+      canvas.dataset.rendererEngine = 'three-fallback';
+    }
+  }
+  // Three's WebGPU renderer starts a backend promise even when it will later
+  // discover that the browser has no WebGL2 context. When WebGPU is absent
+  // (or mobile deliberately selects the WebGL backend), acquire the context
+  // once and pass it to WebGLBackend. This avoids the headless/SwiftShader
+  // and GPU-blocked-browser race where a second getContext call returns null
+  // after the renderer has already begun initialisation.
+  const forceWebGL = window.innerWidth < 640;
+  const webglContext =
+    navigator.gpu === undefined || forceWebGL
+      ? canvas.getContext('webgl2', {
+          alpha: true,
+          antialias: initialSettings?.antialiasing ?? !forceWebGL,
+          depth: true,
+          powerPreference: 'high-performance',
+        })
+      : undefined;
+  if ((navigator.gpu === undefined || forceWebGL) && webglContext === null) {
+    throw new Error('This browser exposes neither WebGPU nor WebGL2.');
+  }
   const renderer = new WebGPURenderer({
     alpha: true,
     antialias: initialSettings?.antialiasing ?? !(window.innerWidth < 640),
     canvas,
     depth: true,
+    // Mobile browsers pay a disproportionate startup cost for WebGPU device
+    // negotiation. Three's WebGL2 backend keeps the same scene/materials and
+    // reaches the first interactive frame faster; desktop still prefers the
+    // WebGPU path and falls back automatically when unavailable.
+    forceWebGL,
     powerPreference: 'high-performance',
     trackTimestamp: true,
+    ...(webglContext === null || webglContext === undefined
+      ? {}
+      : { context: webglContext }),
   });
   try {
     await renderer.init();
@@ -134,25 +252,37 @@ class ThreeUniverseScene implements UniverseScene {
   readonly #renderer: Renderer;
   readonly #scene = new Scene();
   readonly #textureLoader = new TextureLoader();
-  readonly #camera = new PerspectiveCamera(48, 1, 0.1, 4_096);
+  // Keep the render horizon well beyond the generated field. Manual travel is
+  // intentionally not capped at the automatic composition distance.
+  readonly #camera = new PerspectiveCamera(48, 1, 0.1, 1_000_000);
   readonly #lookTarget = new Vector3();
   readonly #core = new Group();
   readonly #coreScale: number;
   readonly #mobileQuality: boolean;
   readonly #pulseBaseScale: number;
   readonly #pulseExpansion: number;
-  readonly #dust: Points;
+  readonly #dust: Sprite | Points;
   readonly #nebula: Group;
   readonly #corona: Group;
-  #coronaPhase = 0;
+  /** Sum of delta * motionScale while motion runs (render-spec.ts clock). */
+  #motionSeconds = 0;
   #coronaDensityScale = 1;
   readonly #pulseRing: Mesh<TorusGeometry, MeshBasicMaterial>;
   readonly #connectedPeerMesh: InstancedMesh;
   readonly #discoveredPeerMesh: InstancedMesh;
   readonly #kuboPeerMesh: InstancedMesh;
+  readonly #disconnectedPeerMesh: InstancedMesh;
   readonly #kuboOrbit: Mesh<TorusGeometry, MeshBasicMaterial>;
-  readonly #edges: LineSegments;
-  readonly #edgeGeometry: BufferGeometry;
+  readonly #edges: Mesh<InstancedBufferGeometry, MeshBasicNodeMaterial>;
+  #edgeGeometry: InstancedBufferGeometry;
+  /** One additive halo draw for every live peer (render-spec PEER_HALO_SPEC). */
+  readonly #peerHalo: Mesh<InstancedBufferGeometry, MeshBasicNodeMaterial>;
+  /** Peer meshes feeding the halo draw with their tint and marker radius. */
+  readonly #peerHaloSources: readonly (readonly [
+    InstancedMesh,
+    Color,
+    number,
+  ])[];
   // Reserve one center edge and one evidence-backed relay edge per visible
   // peer. Unknown remote topology is intentionally never inferred.
   #edgePositions: Float32Array<ArrayBufferLike> = new Float32Array(
@@ -175,9 +305,13 @@ class ThreeUniverseScene implements UniverseScene {
   #rendererDisposed = false;
   #motionPaused = false;
   #pointerId?: number;
+  readonly #activePointers = new Map<number, { x: number; y: number }>();
+  #pinchDistance?: number;
   #pointerX = 0;
   #pointerY = 0;
   readonly #pressedKeys = new Set<string>();
+  #controlBindings: ControlBindings = DEFAULT_CONTROL_BINDINGS;
+  #persistentLinePeerIds = new Set<string>();
   #orbitMode = false;
   #orbitPointerReady = false;
   #yaw = -0.12;
@@ -200,7 +334,8 @@ class ThreeUniverseScene implements UniverseScene {
   #gpuTimestampRequest?: Promise<void>;
   #lastGpuTimestampAt = 0;
   #lastPeerRadiiDiagnostic = 0;
-  #lastInfoDrawCalls = 0;
+  // Development-only contrast QA seam, opted into with ?peerScreenProbe=on.
+  readonly #peerScreenProbe = readPeerScreenProbe();
   #lastFrameTime = performance.now();
   #sampledFrames = 0;
   readonly #qualityPolicy = new QualityPolicy();
@@ -219,6 +354,7 @@ class ThreeUniverseScene implements UniverseScene {
   #qualityMode: SettingsState['qualityMode'] = 'auto';
   #motionScale = 1;
   #cameraSensitivity = 1;
+  #gamepadConnected = false;
   #edgeBrightness = 1;
   #nebulaDensity = 1;
   #dustDensity = 1;
@@ -236,6 +372,8 @@ class ThreeUniverseScene implements UniverseScene {
   #shaderWarmupDone = false;
   readonly #pickWorld = new Vector3();
   readonly #pickScreen = new Vector3();
+  /** View-space scratch for the per-peer minimum marker radius. */
+  readonly #markerDepth = new Vector3();
   readonly #interactionListeners = new Set<
     (interaction: NodeInteraction) => void
   >();
@@ -244,6 +382,7 @@ class ThreeUniverseScene implements UniverseScene {
   #keyboardIndex?: number;
   #pointerDownX = 0;
   #pointerDownY = 0;
+  #pointerDragStarted = false;
   #pointerDownIndex?: number;
 
   constructor(canvas: HTMLCanvasElement, renderer: Renderer) {
@@ -281,18 +420,30 @@ class ThreeUniverseScene implements UniverseScene {
     // meaning. It exists so the observatory has volume: without it the deep
     // field reads as flat black and the fog has nothing to attenuate.
     this.#nebula = createNebulaField(mobileQuality ? 12 : 140, mobileQuality);
+    const deepCloud = createDeepNebulaCloud();
+    if (deepCloud !== undefined) this.#nebula.add(deepCloud);
     this.#nebula.visible = true;
     this.#scene.add(this.#nebula);
     this.#corona = createCoreCorona(mobileQuality);
     this.#scene.add(this.#corona);
-    this.#dust = createDecorativeDust(mobileQuality ? 480 : 2_400);
+    const decorativeDust = createDecorativeDust(mobileQuality ? 480 : 2_400);
+    // PointsNodeMaterial's instanced Sprite path is the high-fidelity WebGPU
+    // implementation. WebGL2 keeps the regular Points primitive: Sprite
+    // instancing is not consistently implemented by WebGL backends and can
+    // interpret the position buffer as a billboard, producing a giant wedge.
+    this.#dust =
+      this.rendererName === 'WebGPU'
+        ? createDepthSizedDust(decorativeDust)
+        : createWebGLDust(decorativeDust);
     // Mobile keeps the CSS sky and low-poly core as the first composition;
     // revealing the 2,400-point dust field later would spend the first input
     // window on a texture-heavy shader that contributes little at phone size.
     this.#dust.visible = !mobileQuality;
-    this.#dust.geometry.setDrawRange(0, mobileQuality ? 480 : 2_400);
     this.#scene.add(this.#dust);
     createObserverCore(this.#core, mobileQuality);
+    // Created after the core layers so it sorts after the orbit rings
+    // (render-spec.ts THREE_TRANSPARENT_DRAW_ORDER), matching the Rust plan.
+    this.#core.add(createHeartGlare());
     this.#core.scale.setScalar(this.#coreScale);
     this.#scene.add(this.#core);
     this.#pulseRing = createPulseRing(mobileQuality);
@@ -300,50 +451,70 @@ class ThreeUniverseScene implements UniverseScene {
     this.#pulseRing.material.color.copy(PULSE_COLOR);
     this.#scene.add(this.#pulseRing);
 
-    this.#connectedPeerMesh = createPeerMesh(mobileQuality, CONNECTED_COLOR);
+    const connectedVisual = peerVisualSpec(
+      'connected-unmeasured',
+      mobileQuality,
+    );
+    const discoveredVisual = peerVisualSpec('discovered', mobileQuality);
+    const kuboVisual = peerVisualSpec('kubo', mobileQuality);
+    const disconnectedVisual = peerVisualSpec('disconnected', mobileQuality);
+    this.#connectedPeerMesh = createPeerMesh(mobileQuality, CONNECTED_COLOR, {
+      opacity: connectedVisual.alpha,
+      radius: connectedVisual.radius,
+    });
     this.#discoveredPeerMesh = createPeerMesh(mobileQuality, DISCOVERED_COLOR, {
-      opacity: 0.98,
-      radius: mobileQuality ? 0.48 : 0.46,
+      opacity: discoveredVisual.alpha,
+      radius: discoveredVisual.radius,
     });
     this.#kuboPeerMesh = createPeerMesh(mobileQuality, KUBO_COLOR, {
       blending: NormalBlending,
       geometry: 'octahedron',
-      opacity: mobileQuality ? 0.78 : 0.68,
-      radius: mobileQuality ? 0.72 : 0.56,
+      opacity: kuboVisual.alpha,
+      radius: kuboVisual.radius,
     });
+    this.#disconnectedPeerMesh = createPeerMesh(
+      mobileQuality,
+      DISCONNECTED_COLOR,
+      {
+        blending: NormalBlending,
+        geometry: 'octahedron',
+        opacity: disconnectedVisual.alpha,
+        radius: disconnectedVisual.radius,
+      },
+    );
+    // The halo draw is created after the four peer meshes and before the Kubo
+    // orbit, so the transparent sort draws it where the Rust draw plan does.
+    // Additive halos commute, so the three halo classes share one draw.
+    this.#peerHalo = createPeerHalo(SCENE_NODE_LIMIT);
+    this.#peerHaloSources = [
+      [this.#connectedPeerMesh, CONNECTED_COLOR, connectedVisual.radius],
+      [this.#discoveredPeerMesh, DISCOVERED_COLOR, discoveredVisual.radius],
+      [this.#kuboPeerMesh, KUBO_COLOR, kuboVisual.radius],
+    ];
     this.#kuboOrbit = createKuboOrbit(mobileQuality);
     this.#connectedPeerMesh.visible = false;
     this.#discoveredPeerMesh.visible = false;
     this.#kuboPeerMesh.visible = false;
+    this.#disconnectedPeerMesh.visible = false;
     this.#scene.add(
       this.#connectedPeerMesh,
       this.#discoveredPeerMesh,
       this.#kuboPeerMesh,
+      this.#disconnectedPeerMesh,
+      this.#peerHalo,
       this.#kuboOrbit,
     );
-    this.#edgeGeometry = new BufferGeometry();
-    this.#edgeGeometry.setAttribute(
-      'position',
-      new BufferAttribute(this.#edgePositions, 3).setUsage(DynamicDrawUsage),
-    );
-    this.#edgeGeometry.setAttribute(
-      'color',
-      new BufferAttribute(this.#edgeColors, 3).setUsage(DynamicDrawUsage),
-    );
-    this.#edgeGeometry.setDrawRange(0, 0);
-    const edgeMaterial = new LineBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.78,
-      blending: AdditiveBlending,
-      depthWrite: false,
-    });
-    edgeMaterial.toneMapped = false;
-    edgeMaterial.fog = false;
-    const edges = new LineSegments(this.#edgeGeometry, edgeMaterial);
+    // Evidence lines are screen-space bands with the latency/status width and
+    // brightness hierarchy of lib.rs EDGE_SHADER, bound zero-copy to the edge
+    // buffers (render-spec.ts evidenceLineWidthPx, edgeHierarchyFactor).
+    const edges = createEvidenceBands(this.#edgePositions, this.#edgeColors);
     edges.visible = false;
     this.#edges = edges;
+    this.#edgeGeometry = edges.geometry;
     this.#scene.add(edges);
+    // Drawn after every scene object (renderOrder), like the Rust composite.
+    this.#scene.add(createVignette());
+    this.#canvas.dataset.motionTimeMs = '0';
 
     this.#resizeObserver = new ResizeObserver(() => this.#resize());
     this.#resizeObserver.observe(canvas);
@@ -355,30 +526,33 @@ class ThreeUniverseScene implements UniverseScene {
     // monolithic long task on throttled mobile CPUs while the CSS sky remains
     // visible underneath the transparent canvas.
     this.#canvas.dataset.drawCalls = '0';
-    this.#canvas.dataset.sceneObjects = String(this.#scene.children.length);
+    this.#canvas.dataset.sceneObjects = String(SEMANTIC_SCENE_OBJECT_COUNT);
     this.#canvas.dataset.pixelRatio = this.#pixelRatio.toFixed(2);
     this.#canvas.dataset.edgeSegments = '0';
     this.#canvas.dataset.renderer = this.rendererName;
     this.#canvas.dataset.qualityTier = 'cinema';
     this.#canvas.dataset.drawCallMode = 'per-frame-average';
     this.#canvas.dataset.gpuTimer = 'pending';
+    this.#canvas.dataset.shaderWarmup = 'pending';
+    this.#canvas.dataset.skyboxEngine = 'shared-texture';
   }
 
   attachPhysics(physics: PhysicsWasm): void {
     this.#physics = physics;
-    // Bind Three.js attributes directly to the Zig WASM linear memory. The
+    // Bind Three.js attributes directly to the Rust WASM linear memory. The
     // renderer still owns WebGL resources, while all per-frame line geometry
     // is produced by the numeric kernel without a JS-side copy.
     this.#edgePositions = physics.edgePositions(physics.maxEdges);
     this.#edgeColors = physics.edgeColors(physics.maxEdges);
-    this.#edgeGeometry.setAttribute(
-      'position',
-      new BufferAttribute(this.#edgePositions, 3).setUsage(DynamicDrawUsage),
+    // Replace the geometry instead of its attributes: WebGPU render objects
+    // cache attributes per geometry and would keep drawing the zeroed buffers.
+    const edgeGeometry = createEvidenceBandGeometry(
+      this.#edgePositions,
+      this.#edgeColors,
     );
-    this.#edgeGeometry.setAttribute(
-      'color',
-      new BufferAttribute(this.#edgeColors, 3).setUsage(DynamicDrawUsage),
-    );
+    this.#edgeGeometry.dispose();
+    this.#edges.geometry = edgeGeometry;
+    this.#edgeGeometry = edgeGeometry;
     this.#seedPhysics();
     this.#updateAutoFraming();
     if (this.#motionPaused) {
@@ -388,6 +562,10 @@ class ThreeUniverseScene implements UniverseScene {
 
   setPeers(peers: readonly PeerRecord[]): void {
     const previousPeerIds = new Set(this.#peers.map(({ peerId }) => peerId));
+    this.#persistentLinePeerIds = updatePersistentLineIds(
+      this.#persistentLinePeerIds,
+      peers,
+    );
     const visible = prioritizeScenePeers(peers, SCENE_NODE_LIMIT);
     const signature = visible
       .map(
@@ -410,7 +588,7 @@ class ThreeUniverseScene implements UniverseScene {
     this.#connectedPeerIds = connectedPeerIds;
 
     this.#peers = visible;
-    this.#relayPairs = relayEdgePairs(visible);
+    this.#relayPairs = relayEdgePairs(visible, this.#persistentLinePeerIds);
     this.#trackArrivals(previousPeerIds, visible);
     if (
       this.#selectedIndex !== undefined &&
@@ -432,19 +610,28 @@ class ThreeUniverseScene implements UniverseScene {
     }
     this.#peerSignature = signature;
     this.#core.scale.setScalar(
-      coreScaleForPeerCount(this.#coreScale, visible.length),
+      sharedCoreScaleForPeerCount(this.#coreScale, visible.length),
     );
-    this.#coronaDensityScale = 1 + Math.min(0.22, visible.length / 4_800);
+    this.#coronaDensityScale = coronaScaleForPeerCount(visible.length);
     this.#connectedPeerMesh.count = visible.filter(isBrowserLivePeer).length;
     this.#connectedPeerMesh.visible = this.#connectedPeerMesh.count > 0;
     this.#kuboPeerMesh.count = visible.filter(isKuboObservedPeer).length;
     this.#kuboPeerMesh.visible = this.#showKubo && this.#kuboPeerMesh.count > 0;
     this.#kuboOrbit.visible = this.#showKubo && this.#kuboPeerMesh.count > 0;
     this.#discoveredPeerMesh.count = visible.filter(
-      (peer) => !isBrowserLivePeer(peer) && !isKuboObservedPeer(peer),
+      (peer) =>
+        peer.status !== 'disconnected' &&
+        !isBrowserLivePeer(peer) &&
+        !isKuboObservedPeer(peer),
     ).length;
     this.#discoveredPeerMesh.visible =
       this.#showDiscovered && this.#discoveredPeerMesh.count > 0;
+    this.#disconnectedPeerMesh.count = visible.filter(
+      (peer) => peer.status === 'disconnected',
+    ).length;
+    // Dead stars are historical evidence, not discoveries. Keep them visible
+    // even when the user hides the violet discovery layer.
+    this.#disconnectedPeerMesh.visible = this.#disconnectedPeerMesh.count > 0;
     this.#canvas.dataset.browserNodeCount = String(
       this.#connectedPeerMesh.count,
     );
@@ -452,11 +639,17 @@ class ThreeUniverseScene implements UniverseScene {
     this.#canvas.dataset.discoveredNodeCount = String(
       this.#discoveredPeerMesh.count,
     );
+    this.#canvas.dataset.disconnectedNodeCount = String(
+      this.#disconnectedPeerMesh.count,
+    );
 
     if (identityChanged) {
       this.#fallbackPositions = fallbackPositions(visible, this.#mobileQuality);
       this.#seedPhysics();
-      this.#autoFrameEnabled = true;
+      // A peer update must not take control back from the player. Automatic
+      // framing is enabled on the initial composition and by the explicit
+      // Home/0/R reset only; once manual travel starts, new peers keep their
+      // world positions without changing the user's zoom target.
       this.#updateAutoFraming();
     } else {
       this.#syncPhysicsMetadata();
@@ -474,6 +667,7 @@ class ThreeUniverseScene implements UniverseScene {
     this.#manualQualityTier = qualityTierForPreset(settings.preset);
     this.#motionScale = settings.motionScale;
     this.#cameraSensitivity = settings.cameraSensitivity;
+    this.#controlBindings = settings.controls;
     this.#edgeBrightness = settings.edgeBrightness;
     this.#nebulaDensity = settings.nebulaDensity;
     this.#dustDensity = settings.dustDensity;
@@ -484,6 +678,8 @@ class ThreeUniverseScene implements UniverseScene {
     this.#showDiscovered = settings.showDiscovered;
     this.#showLatencyRings = settings.showLatencyRings;
     this.#scene.fog = new FogExp2(0x050508, settings.fogDensity);
+    (this.#peerHalo.userData.fogDensity as { value: number }).value =
+      settings.fogDensity;
     this.#renderer.toneMappingExposure = settings.exposure;
     this.#canvas.dataset.antialiasing = settings.antialiasing ? 'on' : 'off';
     this.#canvas.dataset.skybox = settings.skyboxMode;
@@ -493,12 +689,12 @@ class ThreeUniverseScene implements UniverseScene {
     } else {
       this.#setSkybox(settings.skyboxMode);
     }
-    this.#canvas.dataset.pointerMode = pointerModeLabel(
-      settings.pointerMode === 'camera',
-    );
-    if (settings.pointerMode !== 'camera' && this.#orbitMode) {
+    if (settings.pointerMode === 'camera' && !this.#orbitMode) {
+      this.#setOrbitMode(true);
+    } else if (settings.pointerMode !== 'camera' && this.#orbitMode) {
       this.#setOrbitMode(false);
     }
+    this.#canvas.dataset.pointerMode = pointerModeLabel(this.#orbitMode);
     if (this.#qualityMode === 'manual') {
       this.#qualityTier = this.#manualQualityTier;
       this.#pixelRatio = Math.min(
@@ -516,6 +712,7 @@ class ThreeUniverseScene implements UniverseScene {
     this.#kuboOrbit.visible = this.#showKubo && this.#kuboPeerMesh.count > 0;
     this.#discoveredPeerMesh.visible =
       this.#showDiscovered && this.#discoveredPeerMesh.count > 0;
+    this.#disconnectedPeerMesh.visible = this.#disconnectedPeerMesh.count > 0;
     if (this.#motionPaused) this.#renderStaticFrame();
     else this.#resize();
   }
@@ -544,10 +741,12 @@ class ThreeUniverseScene implements UniverseScene {
       return;
     }
 
-    const source =
-      mode === 'space-8k'
-        ? '/skybox/nightsky-8k.webp'
-        : '/skybox/nightsky-2k.webp';
+    const source = skyboxAssetForMode(mode);
+    if (source === undefined) {
+      this.#scene.background = null;
+      this.#canvas.dataset.skyboxStatus = 'off';
+      return;
+    }
     this.#canvas.dataset.skyboxStatus = 'loading';
     this.#textureLoader.load(
       source,
@@ -707,6 +906,9 @@ class ThreeUniverseScene implements UniverseScene {
       this.#pulseUntil = performance.now() + 900;
     }
     for (const peer of visible) {
+      // A disconnected record is a static historical marker. It must not
+      // enter the arrival queue or pulse as if it had just connected.
+      if (peer.status === 'disconnected') continue;
       if (previousPeerIds.has(peer.peerId)) continue;
       if (
         this.#arrivals.has(peer.peerId) ||
@@ -726,23 +928,16 @@ class ThreeUniverseScene implements UniverseScene {
   }
 
   #advanceArrivals(deltaMs: number): void {
-    for (const [peerId, state] of this.#arrivals) {
-      const next = advanceArrival(state, deltaMs, this.#motionPaused);
-      if (next.phase === 'settled') {
-        this.#arrivals.delete(peerId);
-      } else {
-        this.#arrivals.set(peerId, next);
-      }
-    }
-    while (this.#arrivals.size < 3 && this.#arrivalQueue.length > 0) {
-      const peerId = this.#arrivalQueue.shift();
-      if (
-        peerId === undefined ||
-        this.#peers.some((peer) => peer.peerId === peerId) === false
-      ) {
-        continue;
-      }
-      this.#arrivals.set(peerId, createArrival(peerId));
+    // Shared with the Rust renderer: paused frames settle the whole queue.
+    if (
+      advanceSceneArrivals(
+        this.#arrivals,
+        this.#arrivalQueue,
+        deltaMs,
+        this.#motionPaused,
+        this.#peers,
+      )
+    ) {
       this.#pulseUntil = performance.now() + 900;
     }
     this.#canvas.dataset.activeArrivals = String(this.#arrivals.size);
@@ -794,7 +989,9 @@ class ThreeUniverseScene implements UniverseScene {
     this.#peers.slice(0, physics.maxNodes).forEach((peer, index) => {
       physics.setPeerMetadata(
         index,
-        isEvidenceConnectedPeer(peer) ? 'connected' : 'discovered',
+        this.#persistentLinePeerIds.has(peer.peerId)
+          ? 'connected'
+          : 'discovered',
         peer.latencyMs,
         peer.relayPeerId === undefined
           ? -1
@@ -831,6 +1028,7 @@ class ThreeUniverseScene implements UniverseScene {
           .finally(() => {
             if (this.#disposed) return;
             this.#shaderWarmupDone = true;
+            this.#canvas.dataset.shaderWarmup = 'ready';
             // Yield once more after the asynchronous compiler settles. This
             // keeps GPU completion and the first visible draw in separate
             // tasks, preserving input responsiveness on mobile.
@@ -846,7 +1044,12 @@ class ThreeUniverseScene implements UniverseScene {
       const interactionActive =
         this.#hoveredIndex !== undefined || this.#selectedIndex !== undefined;
       if (!interactionActive) {
-        if (this.#autoOrbit) this.#targetYaw += motionDelta * 0.035;
+        // Automatic orbit is part of the initial composition only. Once the
+        // player takes manual camera control, an invisible spin must not fight
+        // the user's yaw input; R/Home/0 re-enable the composed view.
+        if (this.#autoOrbit && this.#autoFrameEnabled) {
+          this.#targetYaw += motionDelta * 0.035;
+        }
         const physicsCount = Math.min(
           this.#peers.length,
           physicsNodeBudget(this.#qualityTier, this.#mobileQuality),
@@ -854,23 +1057,30 @@ class ThreeUniverseScene implements UniverseScene {
         this.#physics?.step(motionDelta, physicsCount, 1);
         this.#canvas.dataset.physicsActiveCount = String(physicsCount);
       }
-      this.#core.rotation.y += motionDelta * 0.09;
-      this.#core.rotation.x += motionDelta * 0.025;
-      if (this.#kuboOrbit.visible) {
-        this.#kuboOrbit.rotation.y += motionDelta * 0.012;
-        this.#kuboOrbit.rotation.z -= motionDelta * 0.006;
+      this.#motionSeconds = advanceMotionClock(
+        this.#motionSeconds,
+        delta,
+        this.#motionScale,
+        false,
+      );
+      // Pose every animated layer from the shared motion clock, exactly like
+      // the Rust renderer. Depth layers drift at different rates; the parallax
+      // is what makes the field read as volume rather than a flat backdrop.
+      const motion = hostMotionState(this.#motionSeconds);
+      this.#core.rotation.set(motion.coreX, motion.coreY, 0);
+      this.#kuboOrbit.rotation.set(Math.PI * 0.48, motion.kuboY, motion.kuboZ);
+      this.#dust.rotation.y = motion.dustY;
+      this.#nebula.rotation.set(0, motion.nebulaY, motion.nebulaZ);
+      this.#corona.scale.setScalar(
+        motion.coronaBreath * this.#coronaDensityScale,
+      );
+      const motionTime = String(Math.round(this.#motionSeconds * 1_000));
+      if (this.#canvas.dataset.motionTimeMs !== motionTime) {
+        this.#canvas.dataset.motionTimeMs = motionTime;
       }
-      this.#dust.rotation.y -= motionDelta * 0.004;
-      // Three depth layers drift at different rates. The parallax is what makes
-      // the field read as volume rather than a flat backdrop.
-      this.#nebula.rotation.y += motionDelta * 0.0016;
-      this.#nebula.rotation.z -= motionDelta * 0.0008;
-      this.#coronaPhase += motionDelta;
-      const breathe = 1 + Math.sin(this.#coronaPhase * 0.55) * 0.045;
-      this.#corona.scale.setScalar(breathe * this.#coronaDensityScale);
     }
     this.#updatePulse(frameTime);
-    this.#updateCamera(this.#motionPaused);
+    this.#updateCamera(this.#motionPaused, delta);
     this.#updatePeerGeometry();
     this.#refreshInteractionPosition();
     this.#animatedFrames += 1;
@@ -899,55 +1109,26 @@ class ThreeUniverseScene implements UniverseScene {
   }
 
   #updatePulse(now: number): void {
-    const material = this.#pulseRing.material;
-    if (!this.#pulseEnabled || !this.#showLatencyRings) {
-      this.#canvas.dataset.pulse = 'disabled';
-      this.#pulseRing.visible = false;
-      material.opacity = 0;
-      return;
-    }
-    const remaining = this.#pulseUntil - now;
-    if (this.#motionPaused) {
-      // Reduced-motion users still get a non-animated discovery affordance.
-      // Keep the ring static and quiet rather than removing the only visual
-      // indication that the browser is searching for peers.
-      this.#canvas.dataset.pulse = 'static';
-      this.#pulseRing.visible = true;
-      this.#pulseRing.scale.setScalar(this.#pulseBaseScale * 1.35);
-      material.opacity = this.#connectedPeerIds.size < 8 ? 0.28 : 0.12;
-      return;
-    }
-    // A quiet search state still needs a visual heartbeat. This ring is
-    // explicitly decorative (it is never added to peer data or hit testing),
-    // so it communicates discovery without inventing a node.
-    if (this.#connectedPeerIds.size < 8) {
-      this.#canvas.dataset.pulse = 'search';
-      const cycle = (now % 3_600) / 3_600;
-      this.#pulseRing.visible = true;
-      this.#pulseRing.scale.setScalar(
-        this.#pulseBaseScale * (1 + cycle * this.#pulseExpansion),
-      );
-      material.opacity = (1 - cycle) * (this.#mobileQuality ? 0.46 : 0.68);
-      return;
-    }
-    if (remaining <= 0) {
-      this.#canvas.dataset.pulse = 'hidden';
-      this.#pulseRing.visible = false;
-      material.opacity = 0;
-      return;
-    }
-    const progress = 1 - remaining / 900;
-    this.#canvas.dataset.pulse = 'event';
-    this.#pulseRing.visible = true;
-    this.#pulseRing.scale.setScalar(
-      this.#pulseBaseScale *
-        (1 + progress * Math.min(2.8, this.#pulseExpansion)),
-    );
-    material.opacity = (1 - progress) * 0.86;
+    const state = pulseVisualState({
+      enabled: this.#pulseEnabled,
+      showLatencyRings: this.#showLatencyRings,
+      motionPaused: this.#motionPaused,
+      connectedCount: this.#connectedPeerIds.size,
+      now,
+      pulseUntil: this.#pulseUntil,
+      mobile: this.#mobileQuality,
+      baseScale: this.#pulseBaseScale,
+      pulseExpansion: this.#pulseExpansion,
+    });
+    this.#canvas.dataset.pulse = state.state;
+    this.#pulseRing.visible = state.visible;
+    this.#pulseRing.scale.setScalar(state.scale);
+    this.#pulseRing.material.opacity = state.opacity;
   }
 
   #renderScene(): void {
     this.#renderer.render(this.#scene, this.#camera);
+    this.#writePeerScreenProbe();
     this.#renderedFrames += 1;
     this.#canvas.dataset.animationFrames = String(this.#animatedFrames);
     this.#canvas.dataset.renderedFrames = String(this.#renderedFrames);
@@ -959,6 +1140,11 @@ class ThreeUniverseScene implements UniverseScene {
     let connectedIndex = 0;
     let discoveredIndex = 0;
     let kuboIndex = 0;
+    let disconnectedIndex = 0;
+    // The minimum marker radius needs this frame's view matrix, including on
+    // static frames where render() has not refreshed it yet.
+    this.#camera.updateMatrixWorld();
+    const markerHeight = this.#canvas.clientHeight;
 
     this.#peers.forEach((peer, index) => {
       const offset = index * 3;
@@ -966,15 +1152,18 @@ class ThreeUniverseScene implements UniverseScene {
       const y = positions[offset + 1] ?? 0;
       const z = positions[offset + 2] ?? 0;
       const browserLive = isBrowserLivePeer(peer);
-      const scale = browserLive
-        ? peer.latencyMs === undefined
-          ? 1
-          : 1.16
-        : isKuboObservedPeer(peer)
-          ? this.#mobileQuality
-            ? 1.08
-            : 0.92
-          : 0.92;
+      const visual = peerVisualSpec(
+        isKuboObservedPeer(peer)
+          ? 'kubo'
+          : peer.status === 'disconnected'
+            ? 'disconnected'
+            : browserLive
+              ? peer.latencyMs === undefined
+                ? 'connected-unmeasured'
+                : 'connected-measured'
+              : 'discovered',
+        this.#mobileQuality,
+      );
       const emphasis =
         index === this.#selectedIndex
           ? 1.42
@@ -984,67 +1173,75 @@ class ThreeUniverseScene implements UniverseScene {
       const arrival = this.#arrivals.get(peer.peerId);
       const arrivalEmphasis = arrival === undefined ? 1 : arrivalScale(arrival);
       const lodScale = 0.74 + this.#nodeLod * 0.26;
-      this.#matrix.makeScale(
-        scale * emphasis * arrivalEmphasis * lodScale,
-        scale * emphasis * arrivalEmphasis * lodScale,
-        scale * emphasis * arrivalEmphasis * lodScale,
+      // render-spec.ts peerMinimumScale, shared with the Rust instance sizes.
+      const minimum = peerMinimumScale(
+        visual.radius * visual.scale * lodScale,
+        -this.#markerDepth
+          .set(x, y, z)
+          .applyMatrix4(this.#camera.matrixWorldInverse).z,
+        markerHeight,
       );
+      const markerScale =
+        visual.scale * emphasis * arrivalEmphasis * lodScale * minimum;
+      this.#matrix.makeScale(markerScale, markerScale, markerScale);
       this.#matrix.setPosition(x, y, z);
       const peerMesh = browserLive
         ? this.#connectedPeerMesh
         : isKuboObservedPeer(peer)
           ? this.#kuboPeerMesh
-          : this.#discoveredPeerMesh;
+          : peer.status === 'disconnected'
+            ? this.#disconnectedPeerMesh
+            : this.#discoveredPeerMesh;
       const meshIndex = browserLive
         ? connectedIndex++
         : isKuboObservedPeer(peer)
           ? kuboIndex++
-          : discoveredIndex++;
+          : peer.status === 'disconnected'
+            ? disconnectedIndex++
+            : discoveredIndex++;
       peerMesh.setMatrixAt(meshIndex, this.#matrix);
 
-      if (this.#physics === undefined && browserLive) {
-        const linkProgress =
-          arrival === undefined ? 1 : arrivalLinkProgress(arrival);
+      if (
+        this.#physics === undefined &&
+        this.#persistentLinePeerIds.has(peer.peerId) &&
+        peer.source !== 'kubo' &&
+        isScenePeerVisible(peer, this.#showKubo, this.#showDiscovered)
+      ) {
         const edgeOffset = edgeCount * 6;
         const length = Math.hypot(x, y, z);
         const surfaceScale = length > 3.2 ? 3.2 / length : 0;
         this.#edgePositions[edgeOffset] = x * surfaceScale;
         this.#edgePositions[edgeOffset + 1] = y * surfaceScale;
         this.#edgePositions[edgeOffset + 2] = z * surfaceScale;
-        this.#edgePositions[edgeOffset + 3] = x * linkProgress;
-        this.#edgePositions[edgeOffset + 4] = y * linkProgress;
-        this.#edgePositions[edgeOffset + 5] = z * linkProgress;
+        this.#edgePositions[edgeOffset + 3] = x;
+        this.#edgePositions[edgeOffset + 4] = y;
+        this.#edgePositions[edgeOffset + 5] = z;
         this.#edgeColor
           .copy(EDGE_COLOR)
           .multiplyScalar(
             edgeBrightness(peer.latencyMs) * this.#edgeBrightness,
           );
-        // A light pulse travels core -> peer along each measured link. Only the
-        // per-endpoint brightness moves; the endpoints themselves stay pinned to
-        // the observed geometry, so the pulse can never imply an unmeasured
-        // topology. Motion-paused renders keep a steady gradient.
-        const pulsePhase = this.#motionPaused
-          ? 0
-          : this.#coronaPhase * 1.6 +
-            unitFromInteger(hashPeerId(peer.peerId)) * Math.PI * 2;
+        // Keep evidence lines steady. Arrival animation affects only the node;
+        // a line must disappear solely after an explicit disconnect event.
         for (let endpoint = 0; endpoint < 2; endpoint += 1) {
           const colorOffset = edgeOffset + endpoint * 3;
-          const travel = this.#motionPaused
-            ? 1
-            : 0.72 + Math.sin(pulsePhase - endpoint * 1.9) * 0.28;
-          this.#edgeColors[colorOffset] = this.#edgeColor.r * travel;
-          this.#edgeColors[colorOffset + 1] = this.#edgeColor.g * travel;
-          this.#edgeColors[colorOffset + 2] = this.#edgeColor.b * travel;
+          this.#edgeColors[colorOffset] = this.#edgeColor.r;
+          this.#edgeColors[colorOffset + 1] = this.#edgeColor.g;
+          this.#edgeColors[colorOffset + 2] = this.#edgeColor.b;
         }
         edgeCount += 1;
       }
     });
 
-    if (this.#physics !== undefined && this.#physicsPositions === positions) {
-      // Zig owns center/relay edge construction and writes directly into the
+    if (
+      this.#physics !== undefined &&
+      this.#physicsPositions === positions &&
+      this.#showKubo &&
+      this.#showDiscovered
+    ) {
+      // Rust owns center/relay edge construction and writes directly into the
       // attributes bound to its linear memory.
       edgeCount = this.#physics.layoutEdges(this.#peers.length);
-      this.#revealWasmEdges(edgeCount);
     } else {
       // A circuit-relay multiaddr carries the relay peer ID. If that relay is
       // also present in the observed peer set, draw a second segment between
@@ -1052,7 +1249,14 @@ class ThreeUniverseScene implements UniverseScene {
       // cannot load WebAssembly.
       for (const [relayIndex, index] of this.#relayPairs) {
         const peer = this.#peers[index];
-        if (peer === undefined) continue;
+        const relay = this.#peers[relayIndex];
+        if (
+          peer === undefined ||
+          relay === undefined ||
+          !isScenePeerVisible(peer, this.#showKubo, this.#showDiscovered) ||
+          !isScenePeerVisible(relay, this.#showKubo, this.#showDiscovered)
+        )
+          continue;
 
         const targetOffset = index * 3;
         const relayOffset = relayIndex * 3;
@@ -1082,12 +1286,11 @@ class ThreeUniverseScene implements UniverseScene {
     this.#connectedPeerMesh.instanceMatrix.needsUpdate = true;
     this.#discoveredPeerMesh.instanceMatrix.needsUpdate = true;
     this.#kuboPeerMesh.instanceMatrix.needsUpdate = true;
-    const edgeAttribute = this.#edgeGeometry.getAttribute('position');
-    edgeAttribute.needsUpdate = true;
-    const edgeColorAttribute = this.#edgeGeometry.getAttribute('color');
-    edgeColorAttribute.needsUpdate = true;
-    this.#edgeGeometry.setDrawRange(0, edgeCount * 2);
+    this.#disconnectedPeerMesh.instanceMatrix.needsUpdate = true;
+    markEvidenceBandsDirty(this.#edgeGeometry);
+    this.#edgeGeometry.instanceCount = edgeCount;
     this.#edges.visible = edgeCount > 0;
+    this.#updatePeerHalo();
     this.#canvas.dataset.edgeSegments = String(edgeCount);
     // Keep the measured radial signal inspectable for browser QA without
     // putting diagnostics into the visible HUD. This is also useful when a
@@ -1111,6 +1314,114 @@ class ThreeUniverseScene implements UniverseScene {
     }
   }
 
+  /**
+   * Copy the live peer meshes' instance matrices, tints and marker radii into
+   * the single halo draw. A hidden or empty peer class contributes nothing,
+   * like the per-class halo meshes this replaces.
+   */
+  #updatePeerHalo(): void {
+    const matrices = this.#peerHalo.userData
+      .matrices as InstancedInterleavedBuffer;
+    const tints = this.#peerHalo.userData.tints as InstancedInterleavedBuffer;
+    const matrixArray = matrices.array as Float32Array;
+    const tintArray = tints.array as Float32Array;
+    let count = 0;
+    for (const [mesh, tint, radius] of this.#peerHaloSources) {
+      if (!mesh.visible || mesh.count <= 0) continue;
+      const instances = Math.min(mesh.count, SCENE_NODE_LIMIT - count);
+      matrixArray.set(
+        (mesh.instanceMatrix.array as Float32Array).subarray(0, instances * 16),
+        count * 16,
+      );
+      for (let index = 0; index < instances; index += 1) {
+        const offset = (count + index) * 4;
+        tintArray[offset] = tint.r;
+        tintArray[offset + 1] = tint.g;
+        tintArray[offset + 2] = tint.b;
+        tintArray[offset + 3] = radius;
+      }
+      count += instances;
+    }
+    matrices.needsUpdate = true;
+    tints.needsUpdate = true;
+    this.#peerHalo.geometry.instanceCount = count;
+    this.#peerHalo.visible = count > 0;
+  }
+
+  /**
+   * Canvas position and projected marker radius of every visible peer after
+   * the frame was drawn, so contrast QA measures each marker where it is
+   * rendered instead of guessing peers from tone-mapped hues. The Rust scene
+   * writes the same format (render-spec.ts formatPeerScreenProbe).
+   */
+  #writePeerScreenProbe(): void {
+    if (!this.#peerScreenProbe) return;
+    const width = this.#canvas.clientWidth;
+    const height = this.#canvas.clientHeight;
+    const positions = this.#physicsPositions ?? this.#fallbackPositions;
+    const lodScale = 0.74 + this.#nodeLod * 0.26;
+    const entries: PeerScreenProbeEntry[] = [];
+    this.#peers.forEach((peer, index) => {
+      if (!isScenePeerVisible(peer, this.#showKubo, this.#showDiscovered)) {
+        return;
+      }
+      const offset = index * 3;
+      this.#pickWorld.set(
+        positions[offset] ?? 0,
+        positions[offset + 1] ?? 0,
+        positions[offset + 2] ?? 0,
+      );
+      const viewDepth = -this.#pickScreen
+        .copy(this.#pickWorld)
+        .applyMatrix4(this.#camera.matrixWorldInverse).z;
+      this.#pickScreen.copy(this.#pickWorld).project(this.#camera);
+      if (
+        viewDepth <= 0 ||
+        Math.abs(this.#pickScreen.x) > 1 ||
+        Math.abs(this.#pickScreen.y) > 1 ||
+        this.#pickScreen.z < -1 ||
+        this.#pickScreen.z > 1
+      ) {
+        return;
+      }
+      const kind: PeerVisualKind = isKuboObservedPeer(peer)
+        ? 'kubo'
+        : peer.status === 'disconnected'
+          ? 'disconnected'
+          : isBrowserLivePeer(peer)
+            ? peer.latencyMs === undefined
+              ? 'connected-unmeasured'
+              : 'connected-measured'
+            : 'discovered';
+      const visual = peerVisualSpec(kind, this.#mobileQuality);
+      const emphasis =
+        index === this.#selectedIndex
+          ? 1.42
+          : index === this.#hoveredIndex
+            ? 1.22
+            : 1;
+      const arrival = this.#arrivals.get(peer.peerId);
+      const worldRadius =
+        visual.radius *
+        visual.scale *
+        emphasis *
+        (arrival === undefined ? 1 : arrivalScale(arrival)) *
+        lodScale *
+        peerMinimumScale(
+          visual.radius * visual.scale * lodScale,
+          viewDepth,
+          height,
+        );
+      entries.push({
+        state: peerScreenProbeState(kind),
+        x: (this.#pickScreen.x + 1) * width * 0.5,
+        y: (1 - this.#pickScreen.y) * height * 0.5,
+        radius: projectedMarkerRadiusPx(worldRadius, viewDepth, height),
+      });
+    });
+    this.#canvas.dataset.peerScreenProbe = formatPeerScreenProbe(entries);
+  }
+
   #peerAt(clientX: number, clientY: number): number | undefined {
     const rect = this.#canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return undefined;
@@ -1120,6 +1431,13 @@ class ThreeUniverseScene implements UniverseScene {
     let nearest: number | undefined;
     let nearestDistance = 24;
     for (let index = 0; index < this.#peers.length; index += 1) {
+      const peer = this.#peers[index];
+      if (
+        peer === undefined ||
+        !isScenePeerVisible(peer, this.#showKubo, this.#showDiscovered)
+      ) {
+        continue;
+      }
       const offset = index * 3;
       this.#pickWorld.set(
         positions[offset] ?? 0,
@@ -1147,7 +1465,6 @@ class ThreeUniverseScene implements UniverseScene {
     const peer = index === undefined ? undefined : this.#peers[index];
     if (peer === undefined) {
       delete this.#canvas.dataset.selectedPeer;
-      this.#canvas.setAttribute('aria-label', 'Live 3D IPFS peer universe');
       for (const listener of this.#interactionListeners)
         listener({ mode: 'clear', pinned: false });
       if (this.#motionPaused) this.#updatePeerGeometry();
@@ -1166,10 +1483,8 @@ class ThreeUniverseScene implements UniverseScene {
     const x = Math.min(Math.max(8, rawX), Math.max(8, window.innerWidth - 8));
     const y = Math.min(Math.max(8, rawY), Math.max(8, window.innerHeight - 8));
     this.#canvas.dataset.selectedPeer = peer.peerId;
-    this.#canvas.setAttribute(
-      'aria-label',
-      `${peer.peerId}, ${peer.status} peer. Press Escape to dismiss details.`,
-    );
+    // Keep the canvas name localized; the live tooltip announces the selected
+    // peer's identity and status through its own aria-live region.
     for (const listener of this.#interactionListeners)
       listener({ peer, x, y, mode, pinned });
     if (this.#motionPaused) this.#updatePeerGeometry();
@@ -1215,10 +1530,8 @@ class ThreeUniverseScene implements UniverseScene {
   #updateAutoFraming(): void {
     if (!this.#autoFrameEnabled || this.#peers.length === 0) return;
     const positions = this.#physicsPositions ?? this.#fallbackPositions;
-    const framingPeers = selectFramingPeers(this.#peers).filter(
-      (peer) =>
-        (this.#showKubo || !isKuboObservedPeer(peer)) &&
-        (this.#showDiscovered || isBrowserLivePeer(peer)),
+    const framingPeers = selectFramingPeers(this.#peers).filter((peer) =>
+      isScenePeerVisible(peer, this.#showKubo, this.#showDiscovered),
     );
     const indices = new Map(
       this.#peers.map((peer, index) => [peer.peerId, index] as const),
@@ -1249,58 +1562,9 @@ class ThreeUniverseScene implements UniverseScene {
     this.#canvas.dataset.cameraFitRadius = radius.toFixed(2);
   }
 
-  #revealWasmEdges(edgeCount: number): void {
-    let edgeIndex = 0;
-    for (const peer of this.#peers) {
-      if (!isBrowserLivePeer(peer)) continue;
-      const arrival = this.#arrivals.get(peer.peerId);
-      const progress = arrival === undefined ? 1 : arrivalLinkProgress(arrival);
-      const offset = edgeIndex * 6;
-      const startX = this.#edgePositions[offset] ?? 0;
-      const startY = this.#edgePositions[offset + 1] ?? 0;
-      const startZ = this.#edgePositions[offset + 2] ?? 0;
-      this.#edgePositions[offset + 3] =
-        startX +
-        ((this.#edgePositions[offset + 3] ?? startX) - startX) * progress;
-      this.#edgePositions[offset + 4] =
-        startY +
-        ((this.#edgePositions[offset + 4] ?? startY) - startY) * progress;
-      this.#edgePositions[offset + 5] =
-        startZ +
-        ((this.#edgePositions[offset + 5] ?? startZ) - startZ) * progress;
-      edgeIndex += 1;
-    }
-    for (const [relayIndex, peerIndex] of this.#relayPairs) {
-      if (edgeIndex >= edgeCount) break;
-      const relayArrival = this.#arrivals.get(
-        this.#peers[relayIndex]?.peerId ?? '',
-      );
-      const peerArrival = this.#arrivals.get(
-        this.#peers[peerIndex]?.peerId ?? '',
-      );
-      const progress = Math.min(
-        relayArrival === undefined ? 1 : arrivalLinkProgress(relayArrival),
-        peerArrival === undefined ? 1 : arrivalLinkProgress(peerArrival),
-      );
-      const offset = edgeIndex * 6;
-      const startX = this.#edgePositions[offset] ?? 0;
-      const startY = this.#edgePositions[offset + 1] ?? 0;
-      const startZ = this.#edgePositions[offset + 2] ?? 0;
-      this.#edgePositions[offset + 3] =
-        startX +
-        ((this.#edgePositions[offset + 3] ?? startX) - startX) * progress;
-      this.#edgePositions[offset + 4] =
-        startY +
-        ((this.#edgePositions[offset + 4] ?? startY) - startY) * progress;
-      this.#edgePositions[offset + 5] =
-        startZ +
-        ((this.#edgePositions[offset + 5] ?? startZ) - startZ) * progress;
-      edgeIndex += 1;
-    }
-  }
-
-  #updateCamera(immediate: boolean): void {
-    const blend = immediate ? 1 : 0.075;
+  #updateCamera(immediate: boolean, deltaSeconds = 1 / 60): void {
+    // render-spec.ts cameraEaseFactor: the same trajectory at any frame rate.
+    const blend = immediate ? 1 : cameraEaseFactor(deltaSeconds);
     this.#yaw = MathUtils.lerp(this.#yaw, this.#targetYaw, blend);
     this.#pitch = MathUtils.lerp(this.#pitch, this.#targetPitch, blend);
     this.#distance = MathUtils.lerp(
@@ -1416,59 +1680,47 @@ class ThreeUniverseScene implements UniverseScene {
       frameP95Ms: frameStats.p95,
       frameMaxMs: frameStats.max,
     });
-    const infoDrawCalls = this.#renderer.info.render.calls;
-    // WebGLRenderer resets this counter per frame, while the common WebGPU
-    // renderer may expose a monotonically accumulated value. Normalize both
-    // implementations to an average calls-per-frame diagnostic so telemetry
-    // and the draw-call budget remain comparable across backends.
-    const drawCallDelta =
-      infoDrawCalls >= this.#lastInfoDrawCalls
-        ? infoDrawCalls - this.#lastInfoDrawCalls
-        : infoDrawCalls;
-    const drawCallsPerFrame =
-      infoDrawCalls > MAX_EXPECTED_DRAW_CALLS_PER_FRAME ||
-      this.#lastInfoDrawCalls > MAX_EXPECTED_DRAW_CALLS_PER_FRAME
-        ? drawCallDelta / Math.max(1, this.#sampledFrames)
-        : infoDrawCalls;
-    this.#lastInfoDrawCalls = infoDrawCalls;
-    const visibleRenderables = countVisibleRenderables(this.#scene);
-    // WebGPU's info counter is backend-dependent and currently reports only
-    // part of the render graph. Keep both values: drawCalls is a conservative
-    // scene budget, gpuDrawCalls is the raw backend counter for diagnostics.
-    this.#canvas.dataset.gpuDrawCalls = String(
-      Math.max(0, Math.round(infoDrawCalls)),
+    const renderInfo = this.#renderer.info.render;
+    // Three's common renderer exposes `drawCalls` for the actual GPU
+    // submissions in the current frame. `calls` is only the number of scene
+    // render invocations and is cumulative on WebGPU; using it made a dense
+    // but instanced peer field appear to exceed the draw-call budget simply
+    // because several frames had elapsed. Keep the invocation counter as a
+    // compatibility fallback for older backends that do not expose the
+    // current-frame metric.
+    const frameDrawCalls = Number.isFinite(renderInfo.drawCalls)
+      ? renderInfo.drawCalls
+      : Number.isFinite(renderInfo.frameCalls)
+        ? renderInfo.frameCalls
+        : renderInfo.calls;
+    const drawCalls = Math.max(
+      0,
+      Math.min(MAX_EXPECTED_DRAW_CALLS_PER_FRAME, Math.round(frameDrawCalls)),
     );
-    this.#canvas.dataset.drawCalls = String(
-      Math.max(visibleRenderables, Math.round(drawCallsPerFrame)),
-    );
+    this.#canvas.dataset.gpuDrawCalls = String(drawCalls);
+    this.#canvas.dataset.drawCalls = String(drawCalls);
     this.#canvas.dataset.drawCallMode = 'per-frame-average';
-    this.#canvas.dataset.sceneObjects = String(this.#scene.children.length);
+    this.#canvas.dataset.sceneObjects = String(SEMANTIC_SCENE_OBJECT_COUNT);
     this.#canvas.dataset.pixelRatio = this.#pixelRatio.toFixed(2);
     this.#lastPerformanceSample = now;
     this.#sampledFrames = 0;
   }
 
   #applyQualityTier(tier: 'cinema' | 'balanced' | 'efficient' | 'still'): void {
-    const position = this.#dust.geometry.getAttribute('position');
-    const countByTier = {
-      cinema: 2_400,
-      balanced: 1_800,
-      efficient: 1_100,
-      still: 480,
-    } as const;
-    this.#dust.geometry.setDrawRange(
-      0,
-      Math.min(
-        position.count,
-        Math.round(countByTier[tier] * this.#dustDensity),
-      ),
+    const capacity = Number(this.#dust.userData.capacity ?? 0);
+    const counts = decorationCounts(
+      tier,
+      this.#dustDensity,
+      this.#mobileQuality,
     );
-    this.#canvas.dataset.dustPoints = String(
-      Math.min(
-        position.count,
-        Math.round(countByTier[tier] * this.#dustDensity),
-      ),
-    );
+    const dustCount = Math.min(capacity, counts.dustPoints);
+    if (this.#dust instanceof Sprite) {
+      this.#dust.count = dustCount;
+    } else {
+      this.#dust.geometry.setDrawRange(0, dustCount);
+    }
+    this.#dust.visible = !this.#mobileQuality && dustCount > 0;
+    this.#canvas.dataset.dustPoints = String(dustCount);
     this.#nebula.traverse((object) => {
       if (object instanceof Points) {
         const nebulaPosition = object.geometry.getAttribute('position');
@@ -1481,23 +1733,35 @@ class ThreeUniverseScene implements UniverseScene {
       }
       if (object instanceof Sprite) {
         object.material.opacity =
-          (this.#mobileQuality ? 0.08 : 0.12) * this.#nebulaDensity;
+          (object.userData.deepCloud === true
+            ? ABYSSAL_SPEC.deepCloud.opacity
+            : this.#mobileQuality
+              ? 0.08
+              : 0.12) * this.#nebulaDensity;
       }
     });
     this.#canvas.dataset.nebulaPoints = String(
-      Math.round((this.#mobileQuality ? 12 : 140) * this.#nebulaDensity),
+      decorationCounts(tier, this.#nebulaDensity, this.#mobileQuality)
+        .nebulaPoints,
     );
   }
 
   #bindControls(): void {
     this.#canvas.addEventListener('pointerdown', this.#onPointerDown);
     this.#canvas.addEventListener('pointermove', this.#onPointerMove);
+    this.#canvas.addEventListener('pointerleave', this.#onPointerLeave);
     this.#canvas.addEventListener('pointerup', this.#onPointerUp);
     this.#canvas.addEventListener('pointercancel', this.#onPointerUp);
     this.#canvas.addEventListener('contextmenu', this.#onContextMenu);
     this.#canvas.addEventListener('wheel', this.#onWheel, { passive: false });
     this.#canvas.addEventListener('keydown', this.#onKeyDown);
     this.#canvas.addEventListener('keyup', this.#onKeyUp);
+    // A key can be released after focus moves from the canvas to a dialog or
+    // another browser surface. Listening at window prevents a held movement
+    // key from surviving that focus transition.
+    window.addEventListener('keyup', this.#onKeyUp);
+    window.addEventListener('gamepadconnected', this.#onGamepadConnected);
+    window.addEventListener('gamepaddisconnected', this.#onGamepadDisconnected);
     document.addEventListener('keydown', this.#onDocumentKeyDown);
     window.addEventListener('blur', this.#onWindowBlur);
     document.addEventListener('visibilitychange', this.#onVisibilityChange);
@@ -1507,35 +1771,107 @@ class ThreeUniverseScene implements UniverseScene {
   #unbindControls(): void {
     this.#canvas.removeEventListener('pointerdown', this.#onPointerDown);
     this.#canvas.removeEventListener('pointermove', this.#onPointerMove);
+    this.#canvas.removeEventListener('pointerleave', this.#onPointerLeave);
     this.#canvas.removeEventListener('pointerup', this.#onPointerUp);
     this.#canvas.removeEventListener('pointercancel', this.#onPointerUp);
     this.#canvas.removeEventListener('contextmenu', this.#onContextMenu);
     this.#canvas.removeEventListener('wheel', this.#onWheel);
     this.#canvas.removeEventListener('keydown', this.#onKeyDown);
     this.#canvas.removeEventListener('keyup', this.#onKeyUp);
+    window.removeEventListener('keyup', this.#onKeyUp);
+    window.removeEventListener('gamepadconnected', this.#onGamepadConnected);
+    window.removeEventListener(
+      'gamepaddisconnected',
+      this.#onGamepadDisconnected,
+    );
     document.removeEventListener('keydown', this.#onDocumentKeyDown);
     window.removeEventListener('blur', this.#onWindowBlur);
     document.removeEventListener('visibilitychange', this.#onVisibilityChange);
     this.#pressedKeys.clear();
+    this.#activePointers.clear();
+    this.#pinchDistance = undefined;
+    this.#pointerDragStarted = false;
   }
 
   readonly #onPointerDown = (event: PointerEvent): void => {
     if (event.button === 2) {
+      this.#canvas.focus({ preventScroll: true });
       this.#setOrbitMode(!this.#orbitMode);
       event.preventDefault();
       return;
     }
     if (event.button !== 0) return;
+    this.#canvas.focus({ preventScroll: true });
+    this.#activePointers.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    if (this.#activePointers.size >= 2) {
+      let first: { x: number; y: number } | undefined;
+      let second: { x: number; y: number } | undefined;
+      for (const point of this.#activePointers.values()) {
+        if (first === undefined) first = point;
+        else {
+          second = point;
+          break;
+        }
+      }
+      if (first !== undefined && second !== undefined) {
+        this.#pinchDistance = pointerDistance(first, second);
+      }
+      // A pinch is a distinct gesture: never let the first finger's tap hit
+      // select a peer when a second contact joins it.
+      this.#pointerId = undefined;
+      this.#pointerDownIndex = undefined;
+      this.#pointerDragStarted = false;
+      this.#orbitPointerReady = false;
+      this.#canvas.setPointerCapture(event.pointerId);
+      event.preventDefault();
+      return;
+    }
     this.#pointerId = event.pointerId;
     this.#pointerX = event.clientX;
     this.#pointerY = event.clientY;
     this.#pointerDownX = event.clientX;
     this.#pointerDownY = event.clientY;
+    this.#pointerDragStarted = false;
     this.#pointerDownIndex = this.#peerAt(event.clientX, event.clientY);
     this.#canvas.setPointerCapture(event.pointerId);
   };
 
   readonly #onPointerMove = (event: PointerEvent): void => {
+    const activePointer = this.#activePointers.get(event.pointerId);
+    if (activePointer !== undefined) {
+      activePointer.x = event.clientX;
+      activePointer.y = event.clientY;
+      if (this.#activePointers.size >= 2) {
+        let first: { x: number; y: number } | undefined;
+        let second: { x: number; y: number } | undefined;
+        for (const point of this.#activePointers.values()) {
+          if (first === undefined) first = point;
+          else {
+            second = point;
+            break;
+          }
+        }
+        if (first !== undefined && second !== undefined) {
+          const nextDistance = pointerDistance(first, second);
+          const previousDistance = this.#pinchDistance ?? nextDistance;
+          this.#pinchDistance = nextDistance;
+          const zoomDelta = pinchZoomDelta(previousDistance, nextDistance);
+          if (zoomDelta !== 0) {
+            this.#enterManualCamera();
+            this.#targetDistance = manualCameraDistance(
+              this.#targetDistance,
+              zoomDelta,
+            );
+            if (this.#motionPaused) this.#renderStaticFrame();
+          }
+        }
+        return;
+      }
+    }
+    if (this.#activePointers.size >= 2) return;
     if (
       this.#pointerId === undefined &&
       this.#orbitMode &&
@@ -1548,6 +1884,7 @@ class ThreeUniverseScene implements UniverseScene {
         return;
       }
       this.#rotateFromPointer(event);
+      if (this.#motionPaused) this.#renderStaticFrame();
       return;
     }
     if (this.#pointerId === undefined || event.pointerId !== this.#pointerId) {
@@ -1562,24 +1899,71 @@ class ThreeUniverseScene implements UniverseScene {
       }
       return;
     }
+    if (
+      !this.#pointerDragStarted &&
+      !pointerMovedBeyondThreshold(
+        { x: this.#pointerDownX, y: this.#pointerDownY },
+        { x: event.clientX, y: event.clientY },
+      )
+    ) {
+      // A small hand tremor should not steal a tap or disable automatic
+      // framing. Keep the original anchor so the first intentional drag has
+      // the full, predictable delta.
+      return;
+    }
+    this.#pointerDragStarted = true;
     this.#rotateFromPointer(event);
     if (this.#motionPaused) {
       this.#renderStaticFrame();
     }
   };
 
+  /** Clear transient hover evidence when the pointer leaves the scene. */
+  readonly #onPointerLeave = (): void => {
+    if (
+      this.#pointerId !== undefined ||
+      this.#activePointers.size > 0 ||
+      this.#selectedIndex !== undefined
+    ) {
+      return;
+    }
+    if (this.#hoveredIndex !== undefined) this.#clearInteraction();
+  };
+
   readonly #onPointerUp = (event: PointerEvent): void => {
+    this.#activePointers.delete(event.pointerId);
+    if (this.#activePointers.size >= 2) {
+      let first: { x: number; y: number } | undefined;
+      let second: { x: number; y: number } | undefined;
+      for (const point of this.#activePointers.values()) {
+        if (first === undefined) first = point;
+        else {
+          second = point;
+          break;
+        }
+      }
+      this.#pinchDistance =
+        first !== undefined && second !== undefined
+          ? pointerDistance(first, second)
+          : undefined;
+    } else {
+      this.#pinchDistance = undefined;
+    }
+    if (this.#canvas.hasPointerCapture(event.pointerId)) {
+      this.#canvas.releasePointerCapture(event.pointerId);
+    }
     if (event.pointerId === this.#pointerId) {
       this.#pointerId = undefined;
       this.#orbitPointerReady = false;
-      if (this.#canvas.hasPointerCapture(event.pointerId)) {
-        this.#canvas.releasePointerCapture(event.pointerId);
-      }
       const moved = Math.hypot(
         event.clientX - this.#pointerDownX,
         event.clientY - this.#pointerDownY,
       );
-      if (event.type !== 'pointercancel' && moved < 10) {
+      if (
+        event.type !== 'pointercancel' &&
+        !this.#pointerDragStarted &&
+        moved < 10
+      ) {
         // Prefer the up position, but retain the down hit for a click that
         // lands a few pixels away after a high-DPI pointer event. The camera
         // is frozen while a node is hovered/selected, so this never invents a
@@ -1596,6 +1980,7 @@ class ThreeUniverseScene implements UniverseScene {
         }
       }
       this.#pointerDownIndex = undefined;
+      this.#pointerDragStarted = false;
     }
   };
 
@@ -1609,7 +1994,7 @@ class ThreeUniverseScene implements UniverseScene {
     this.#pointerX = event.clientX;
     this.#pointerY = event.clientY;
     if (deltaX === 0 && deltaY === 0) return;
-    this.#autoFrameEnabled = false;
+    this.#enterManualCamera();
     this.#targetYaw -= deltaX * 0.006 * this.#cameraSensitivity;
     this.#targetPitch = MathUtils.clamp(
       this.#targetPitch + deltaY * 0.004 * this.#cameraSensitivity,
@@ -1625,21 +2010,63 @@ class ThreeUniverseScene implements UniverseScene {
     this.#orbitMode = orbit;
     this.#orbitPointerReady = false;
     this.#canvas.dataset.pointerMode = pointerModeLabel(orbit);
-    this.#canvas.setAttribute(
-      'aria-label',
-      orbit
-        ? '3D camera control active. Move the pointer to orbit. Press Escape or right click to return to peer hover.'
-        : 'Live 3D IPFS peer universe. Move the pointer over a peer for details.',
-    );
+    // AppShell owns the localized accessible name. Do not replace it with a
+    // renderer-local English string when the user toggles camera mode.
     if (orbit) {
+      // Switching to the persistent camera gesture is itself an explicit
+      // manual action. Freeze automatic framing immediately, before the next
+      // peer batch can replace the target distance. This keeps right-click
+      // mode consistent with drag, wheel, pinch, and keyboard travel.
+      this.#enterManualCamera();
       this.#hoveredIndex = undefined;
       if (this.#selectedIndex === undefined)
         this.#emitInteraction('clear', undefined, false);
     }
   }
 
+  /**
+   * Hand control from automatic framing to the user without a discontinuous
+   * zoom. Peer updates can change the automatic target while the current
+   * camera is still easing toward it; manual travel must begin at the current
+   * distance, not at that stale target.
+   */
+  #enterManualCamera(): void {
+    if (!this.#autoFrameEnabled) return;
+    this.#autoFrameEnabled = false;
+    this.#targetDistance = this.#distance;
+  }
+
   #applyKeyboardMotion(deltaSeconds: number): void {
-    const intent = cameraIntentFromKeys(this.#pressedKeys);
+    const keyboardIntent = cameraIntentFromKeys(
+      this.#pressedKeys,
+      this.#controlBindings,
+    );
+    const gamepadIntent = readGamepadIntent();
+    const intent = {
+      forward:
+        keyboardIntent.forward !== 0
+          ? keyboardIntent.forward
+          : gamepadIntent.forward,
+      strafe:
+        keyboardIntent.strafe !== 0
+          ? keyboardIntent.strafe
+          : gamepadIntent.strafe,
+      yaw: keyboardIntent.yaw !== 0 ? keyboardIntent.yaw : gamepadIntent.yaw,
+      pitch:
+        keyboardIntent.pitch !== 0 ? keyboardIntent.pitch : gamepadIntent.pitch,
+    };
+    const hasGamepadIntent =
+      gamepadIntent.forward !== 0 ||
+      gamepadIntent.strafe !== 0 ||
+      gamepadIntent.yaw !== 0 ||
+      gamepadIntent.pitch !== 0 ||
+      gamepadIntent.boost;
+    if (hasGamepadIntent) {
+      this.#gamepadConnected = true;
+      this.#canvas.dataset.gamepad = 'connected';
+    } else if (this.#gamepadConnected) {
+      this.#canvas.dataset.gamepad = 'connected-idle';
+    }
     if (
       intent.forward === 0 &&
       intent.strafe === 0 &&
@@ -1648,15 +2075,18 @@ class ThreeUniverseScene implements UniverseScene {
     ) {
       return;
     }
-    this.#autoFrameEnabled = false;
+    this.#enterManualCamera();
     const scale = Math.min(0.05, Math.max(0, deltaSeconds));
-    this.#targetDistance = MathUtils.clamp(
-      this.#targetDistance - intent.forward * scale * 24,
-      CAMERA_MIN_DISTANCE,
-      CAMERA_MAX_DISTANCE,
+    const boost =
+      this.#pressedKeys.has(this.#controlBindings.boost) || gamepadIntent.boost
+        ? 2.4
+        : 1;
+    this.#targetDistance = manualCameraDistance(
+      this.#targetDistance,
+      -intent.forward * scale * 24 * boost,
     );
     this.#targetYaw +=
-      (intent.strafe * 1.8 + intent.yaw * 2.2) *
+      (intent.strafe * 1.8 * boost + intent.yaw * 2.2) *
       scale *
       this.#cameraSensitivity;
     this.#targetPitch = MathUtils.clamp(
@@ -1668,11 +2098,10 @@ class ThreeUniverseScene implements UniverseScene {
 
   readonly #onWheel = (event: WheelEvent): void => {
     event.preventDefault();
-    this.#autoFrameEnabled = false;
-    this.#targetDistance = MathUtils.clamp(
-      this.#targetDistance + event.deltaY * 0.015,
-      CAMERA_MIN_DISTANCE,
-      CAMERA_MAX_DISTANCE,
+    this.#enterManualCamera();
+    this.#targetDistance = manualCameraDistance(
+      this.#targetDistance,
+      wheelZoomDelta(event.deltaY, event.deltaMode),
     );
     if (this.#motionPaused) {
       this.#renderStaticFrame();
@@ -1680,8 +2109,20 @@ class ThreeUniverseScene implements UniverseScene {
   };
 
   readonly #onKeyDown = (event: KeyboardEvent): void => {
-    if (isCameraCode(event.code)) {
-      this.#pressedKeys.add(event.code);
+    const inputCode = keyboardInputCode(event.code, event.key);
+    const action = cameraActionForCode(inputCode, this.#controlBindings);
+    if (action === 'zoomIn' || action === 'zoomOut') {
+      this.#enterManualCamera();
+      this.#targetDistance = manualCameraDistance(
+        this.#targetDistance,
+        action === 'zoomIn' ? -4 : 4,
+      );
+      event.preventDefault();
+      if (this.#motionPaused) this.#renderStaticFrame();
+      return;
+    }
+    if (action !== undefined) {
+      this.#pressedKeys.add(inputCode);
       event.preventDefault();
       if (this.#motionPaused) {
         this.#applyKeyboardMotion(1 / 60);
@@ -1689,41 +2130,48 @@ class ThreeUniverseScene implements UniverseScene {
       }
       return;
     }
-    switch (event.key) {
+    // Use KeyboardEvent.code for stable shortcuts across keyboard layouts;
+    // custom movement bindings were already resolved above by code. The
+    // event.key fallback keeps synthetic/legacy events usable in embedded
+    // browsers that omit code.
+    switch (inputCode) {
+      case 'Equal':
       case '+':
       case '=':
       case 'PageUp':
-        this.#autoFrameEnabled = false;
+        this.#enterManualCamera();
         this.#targetDistance = Math.max(
           CAMERA_MIN_DISTANCE,
           this.#targetDistance - 4,
         );
         break;
+      case 'Minus':
       case '-':
       case '_':
       case 'PageDown':
-        this.#autoFrameEnabled = false;
-        this.#targetDistance = Math.min(
-          CAMERA_MAX_DISTANCE,
-          this.#targetDistance + 4,
-        );
+        this.#enterManualCamera();
+        this.#targetDistance = manualCameraDistance(this.#targetDistance, 4);
         break;
+      case 'KeyR':
+      case 'r':
+      case 'R':
+      case 'Digit0':
       case '0':
       case 'Home':
-        this.#targetYaw = -0.12;
-        this.#targetPitch = 0.08;
-        this.#autoFrameEnabled = true;
-        this.#updateAutoFraming();
+        this.#resetCamera();
         break;
+      case 'BracketLeft':
       case '[':
         this.#selectRelative(-1);
         event.preventDefault();
         return;
+      case 'BracketRight':
       case ']':
         this.#selectRelative(1);
         event.preventDefault();
         return;
       case 'Enter':
+      case 'Space':
       case ' ':
         this.#toggleKeyboardSelection();
         event.preventDefault();
@@ -1743,21 +2191,67 @@ class ThreeUniverseScene implements UniverseScene {
   };
 
   readonly #onKeyUp = (event: KeyboardEvent): void => {
-    this.#pressedKeys.delete(event.code);
+    this.#pressedKeys.delete(keyboardInputCode(event.code, event.key));
   };
+
+  readonly #onGamepadConnected = (): void => {
+    this.#gamepadConnected = true;
+    this.#canvas.dataset.gamepad = 'connected';
+  };
+
+  readonly #onGamepadDisconnected = (): void => {
+    let hasGamepad = false;
+    try {
+      hasGamepad =
+        typeof navigator.getGamepads === 'function' &&
+        Array.from(navigator.getGamepads()).some(
+          (gamepad) => gamepad?.connected === true,
+        );
+    } catch {
+      // Device access can be denied by an embedded browser; treat it as
+      // unavailable without interrupting the render loop.
+    }
+    this.#gamepadConnected = hasGamepad;
+    this.#canvas.dataset.gamepad = hasGamepad ? 'connected' : 'unavailable';
+  };
+
+  /** Restore the observatory view and opt back into automatic framing. */
+  #resetCamera(): void {
+    this.#targetYaw = -0.12;
+    this.#targetPitch = 0.08;
+    this.#autoFrameEnabled = true;
+    if (this.#peers.length === 0) {
+      this.#targetDistance = this.#mobileQuality ? 84 : 54;
+    } else {
+      this.#updateAutoFraming();
+    }
+  }
 
   readonly #onWindowBlur = (): void => {
     this.#pressedKeys.clear();
     this.#pointerId = undefined;
+    this.#pointerDragStarted = false;
+    this.#activePointers.clear();
+    this.#pinchDistance = undefined;
     this.#orbitPointerReady = false;
   };
 
   #selectRelative(delta: -1 | 1): void {
-    if (this.#peers.length === 0) return;
+    const selectable = this.#peers.flatMap((peer, index) =>
+      isScenePeerVisible(peer, this.#showKubo, this.#showDiscovered)
+        ? [index]
+        : [],
+    );
+    if (selectable.length === 0) return;
     const current =
       this.#selectedIndex ?? this.#keyboardIndex ?? this.#hoveredIndex;
-    const start = current ?? (delta > 0 ? -1 : 0);
-    const next = (start + delta + this.#peers.length) % this.#peers.length;
+    const currentPosition =
+      current === undefined ? -1 : selectable.indexOf(current);
+    const start = currentPosition < 0 ? (delta > 0 ? -1 : 0) : currentPosition;
+    const nextPosition =
+      (start + delta + selectable.length) % selectable.length;
+    const next = selectable[nextPosition];
+    if (next === undefined) return;
     this.#keyboardIndex = next;
     this.#hoveredIndex = next;
     // Keyboard focus is an explicit selection, not a transient hover. Keep
@@ -1783,10 +2277,35 @@ class ThreeUniverseScene implements UniverseScene {
   }
 
   readonly #onDocumentKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape' && !event.defaultPrevented) {
+    if (event.defaultPrevented || event.isComposing) return;
+    const inputCode = keyboardInputCode(event.code, event.key);
+    // Let form controls, links, and native dialogs own every key—including
+    // Escape. A search field or a settings dialog must not dismiss a pinned
+    // peer or toggle the camera while the user is typing or closing it.
+    if (
+      event.target !== this.#canvas &&
+      isInteractiveKeyboardTarget(event.target)
+    ) {
+      return;
+    }
+    if (inputCode === 'Escape') {
       if (this.#orbitMode) this.#setOrbitMode(false);
       else this.#clearInteraction();
+      return;
     }
+    // The canvas owns the same event when it is focused; editable controls,
+    // links, and dialogs must keep their browser semantics. For the rest of
+    // the document, route camera/scene shortcuts to the canvas so WASD works
+    // immediately after a normal page click without stealing form input.
+    if (event.target === this.#canvas) return;
+    if (
+      cameraActionForCode(inputCode, this.#controlBindings) === undefined &&
+      !isSceneShortcutCode(inputCode)
+    ) {
+      return;
+    }
+    this.#canvas.focus({ preventScroll: true });
+    this.#onKeyDown(event);
   };
 
   #clearInteraction(): void {
@@ -1812,6 +2331,12 @@ class ThreeUniverseScene implements UniverseScene {
 
   readonly #onVisibilityChange = (): void => {
     if (document.hidden) {
+      this.#pressedKeys.clear();
+      this.#pointerId = undefined;
+      this.#pointerDragStarted = false;
+      this.#activePointers.clear();
+      this.#pinchDistance = undefined;
+      this.#orbitPointerReady = false;
       if (this.#frameRequest !== undefined) {
         cancelAnimationFrame(this.#frameRequest);
         this.#frameRequest = undefined;
@@ -1820,6 +2345,15 @@ class ThreeUniverseScene implements UniverseScene {
     }
     this.start();
   };
+}
+
+/** `?peerScreenProbe=on`, honoured only by development builds. */
+function readPeerScreenProbe(): boolean {
+  if (!import.meta.env.DEV) return false;
+  const peerScreenProbe = new URLSearchParams(window.location.search).get(
+    'peerScreenProbe',
+  );
+  return peerScreenProbe === 'on';
 }
 
 function createDecorativeDust(count: number): Points {
@@ -1863,10 +2397,10 @@ function createDecorativeDust(count: number): Points {
   geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
   const material = new PointsMaterial({
     vertexColors: true,
-    size: 0.48,
+    size: 0.32,
     sizeAttenuation: true,
     transparent: true,
-    opacity: 0.7,
+    opacity: 0.58,
     alphaTest: 0.02,
     map: createDustSprite(),
     depthWrite: false,
@@ -1976,18 +2510,7 @@ function createObserverCore(group: Group, mobileQuality = false): void {
     group.add(heart, shell, ring);
     return;
   }
-  const atmosphere = new Mesh(
-    new SphereGeometry(4.35, mobileQuality ? 12 : 24, mobileQuality ? 8 : 16),
-    new MeshBasicMaterial({
-      color: 0x73fbd3,
-      transparent: true,
-      opacity: 0.09,
-      side: BackSide,
-      blending: AdditiveBlending,
-      depthWrite: false,
-    }),
-  );
-  atmosphere.material.toneMapped = false;
+  const atmosphere = createAtmosphereSprite();
   const ringGeometry = new TorusGeometry(
     7.4,
     0.045,
@@ -2001,11 +2524,51 @@ function createObserverCore(group: Group, mobileQuality = false): void {
     blending: AdditiveBlending,
   });
   ringMaterial.toneMapped = false;
-  const ring = new Mesh(ringGeometry, ringMaterial);
-  ring.rotation.set(Math.PI * 0.52, 0.28, 0.16);
-  const polarRing = new Mesh(ringGeometry, ringMaterial.clone());
-  polarRing.rotation.set(0.18, Math.PI * 0.48, -0.32);
-  group.add(atmosphere, heart, shell, ring, polarRing);
+  // The orbital and polar rings share one material and only turn with the
+  // core, so both tori live in one geometry. The triangles keep the ring →
+  // polar ring order of the two former draws, so depth writes are unchanged.
+  const orbitalRings = new Mesh(
+    mergeRotatedGeometry(ringGeometry, [
+      [Math.PI * 0.52, 0.28, 0.16],
+      [0.18, Math.PI * 0.48, -0.32],
+    ]),
+    ringMaterial,
+  );
+  ringGeometry.dispose();
+  group.add(atmosphere, heart, shell, orbitalRings);
+}
+
+/** Copies of an indexed geometry rotated by XYZ Euler angles, in one buffer. */
+function mergeRotatedGeometry(
+  source: BufferGeometry,
+  rotations: readonly (readonly [number, number, number])[],
+): BufferGeometry {
+  const position = source.getAttribute('position');
+  const index = source.getIndex();
+  const vertexCount = position.count;
+  const indexCount = index?.count ?? vertexCount;
+  const positions = new Float32Array(vertexCount * 3 * rotations.length);
+  const indices = new Uint32Array(indexCount * rotations.length);
+  const matrix = new Matrix4();
+  const euler = new Euler();
+  const vertex = new Vector3();
+  rotations.forEach(([x, y, z], copy) => {
+    matrix.makeRotationFromEuler(euler.set(x, y, z));
+    for (let vertexIndex = 0; vertexIndex < vertexCount; vertexIndex += 1) {
+      vertex
+        .fromBufferAttribute(position, vertexIndex)
+        .applyMatrix4(matrix)
+        .toArray(positions, (copy * vertexCount + vertexIndex) * 3);
+    }
+    for (let item = 0; item < indexCount; item += 1) {
+      indices[copy * indexCount + item] =
+        (index?.getX(item) ?? item) + copy * vertexCount;
+    }
+  });
+  const merged = new BufferGeometry();
+  merged.setAttribute('position', new BufferAttribute(positions, 3));
+  merged.setIndex(new BufferAttribute(indices, 1));
+  return merged;
 }
 
 export function createPeerMesh(
@@ -2021,7 +2584,7 @@ export function createPeerMesh(
   const geometry =
     options.geometry === 'octahedron'
       ? new OctahedronGeometry(options.radius ?? 0.5, 0)
-      : new IcosahedronGeometry(options.radius ?? 0.42, mobileQuality ? 0 : 1);
+      : new IcosahedronGeometry(options.radius ?? 1.35, mobileQuality ? 0 : 1);
   const material = new MeshBasicMaterial({
     color,
     transparent: true,
@@ -2061,15 +2624,17 @@ function fallbackPositions(
 export function radialDistance(peer: PeerRecord): number {
   const seed = unitFromInteger(hashPeerId(peer.peerId) ^ 0xa53c9e17);
   if (peer.latencyMs !== undefined) {
-    const latency = MathUtils.clamp(peer.latencyMs, 10, 10_000);
-    const normalized =
-      (Math.log(latency) - Math.log(10)) / (Math.log(10_000) - Math.log(10));
+    // Logarithmic ping mapping has no upper product cap. A square curve keeps
+    // nearby peers in the readable core while allowing extreme latency to
+    // expand deep into space instead of collapsing at an arbitrary radius.
+    const latency = Math.max(10, peer.latencyMs);
+    const normalized = Math.max(0, Math.log10(latency / 10) / 3);
     // Ping is the dominant spatial signal. The source offset keeps a Kubo
     // daemon observation in its outer field without replacing its measured
     // latency with a decorative constant.
-    const sourceOffset = peer.source === 'kubo' ? 48 : 0;
-    const base = 12 + normalized * 420 + sourceOffset;
-    return Math.min(MAX_PEER_WORLD_RADIUS, base * (0.92 + seed * 0.16));
+    const sourceOffset = peer.source === 'kubo' ? 96 : 0;
+    const base = 12 + normalized * normalized * 4_096 + sourceOffset;
+    return base * (0.92 + seed * 0.16);
   }
   // An unmeasured peer is not assigned a fake ping. It stays visibly outside
   // the measured browser field, with Kubo and discovery records separated by
@@ -2078,22 +2643,15 @@ export function radialDistance(peer: PeerRecord): number {
     // Kubo records are still separated by source and the orbit ring, but the
     // nearest unmeasured observations must enter the first frame when the
     // browser has no live peers yet. The long tail remains a deep field.
-    peer.source === 'kubo' ? 96 : peer.status === 'discovered' ? 120 : 84;
+    peer.source === 'kubo' ? 220 : peer.status === 'discovered' ? 180 : 120;
   const spread =
-    peer.source === 'kubo' ? 240 : peer.status === 'discovered' ? 140 : 120;
-  return Math.min(MAX_PEER_WORLD_RADIUS, base + seed * spread);
+    peer.source === 'kubo' ? 2_200 : peer.status === 'discovered' ? 1_200 : 900;
+  return base + seed * spread;
 }
 
 /** Give the observatory core a small density response without changing its
  * role as the stable visual anchor of the composition. */
-export function coreScaleForPeerCount(
-  baseScale: number,
-  peerCount: number,
-): number {
-  const safeBase = Number.isFinite(baseScale) ? Math.max(0.1, baseScale) : 1;
-  const safeCount = Number.isFinite(peerCount) ? Math.max(0, peerCount) : 0;
-  return safeBase + Math.min(0.4, safeCount / 2_500);
-}
+export { coreScaleForPeerCount } from './render-spec';
 
 function sceneRadialDistance(peer: PeerRecord, mobileQuality: boolean): number {
   // Mobile changes geometry density and pixel cost, never the semantic spatial
@@ -2116,19 +2674,21 @@ export function pointRadius(points: ArrayLike<number>, offset: number): number {
  */
 export function relayEdgePairs(
   peers: readonly PeerRecord[],
+  persistentLinePeerIds?: ReadonlySet<string>,
 ): readonly (readonly [relayIndex: number, peerIndex: number])[] {
+  const hasEvidenceLine = (peer: PeerRecord): boolean =>
+    persistentLinePeerIds?.has(peer.peerId) ?? isEvidenceConnectedPeer(peer);
   const peerIndices = new Map(
     peers.map((peer, index) => [peer.peerId, index] as const),
   );
   const pairs: Array<readonly [number, number]> = [];
   const seenEdges = new Set<string>();
   peers.forEach((peer, index) => {
-    if (!isEvidenceConnectedPeer(peer) || peer.relayPeerId === undefined)
-      return;
+    if (!hasEvidenceLine(peer) || peer.relayPeerId === undefined) return;
     const relayIndex = peerIndices.get(peer.relayPeerId);
     if (relayIndex === undefined || relayIndex === index) return;
     const relay = peers[relayIndex];
-    if (relay === undefined || !isEvidenceConnectedPeer(relay)) return;
+    if (relay === undefined || !hasEvidenceLine(relay)) return;
     const edgeKey =
       relayIndex < index ? `${relayIndex}:${index}` : `${index}:${relayIndex}`;
     if (seenEdges.has(edgeKey)) return;
@@ -2151,6 +2711,17 @@ export function isKuboObservedPeer(peer: PeerRecord): boolean {
   );
 }
 
+/** Return whether a peer is enabled by the current data-layer toggles. */
+export function isScenePeerVisible(
+  peer: PeerRecord,
+  showKubo: boolean,
+  showDiscovered: boolean,
+): boolean {
+  if (isKuboObservedPeer(peer) && !showKubo) return false;
+  if (peer.status === 'discovered' && !showDiscovered) return false;
+  return true;
+}
+
 function isEvidenceConnectedPeer(peer: PeerRecord): boolean {
   return isBrowserLivePeer(peer) || isKuboObservedPeer(peer);
 }
@@ -2161,7 +2732,7 @@ export function prioritizeScenePeers(
 ): readonly PeerRecord[] {
   const safeLimit = Math.max(0, Math.trunc(limit));
   return peers
-    .filter(({ status }) => status !== 'disconnected')
+    .slice()
     .sort(
       (left, right) =>
         scenePriority(left) - scenePriority(right) ||
@@ -2202,6 +2773,7 @@ export function selectFramingPeers(
 function scenePriority(peer: PeerRecord): number {
   if (isBrowserLivePeer(peer)) return 0;
   if (isKuboObservedPeer(peer)) return 1;
+  if (peer.status === 'disconnected') return 3;
   return 2;
 }
 
@@ -2276,22 +2848,6 @@ function qualityTierForPreset(preset: SettingsState['preset']): QualityTier {
     case 'auto':
       return 'cinema';
   }
-}
-
-function countVisibleRenderables(scene: Scene): number {
-  let count = 0;
-  scene.traverseVisible((object) => {
-    if (
-      object.type === 'Mesh' ||
-      object.type === 'Line' ||
-      object.type === 'LineSegments' ||
-      object.type === 'Points' ||
-      object.type === 'Sprite'
-    ) {
-      count += 1;
-    }
-  });
-  return count;
 }
 
 function disposeMaterial(material: Material | Material[]): void {
@@ -2419,10 +2975,10 @@ function createNebulaField(count: number, mobileQuality = false): Group {
   geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
   const material = new PointsMaterial({
     vertexColors: true,
-    size: mobileQuality ? 72 : 142,
+    size: mobileQuality ? 46 : 78,
     sizeAttenuation: true,
     transparent: true,
-    opacity: mobileQuality ? 0.28 : 0.62,
+    opacity: mobileQuality ? 0.22 : 0.42,
     blending: AdditiveBlending,
     map: createNebulaParticleSprite(),
     depthWrite: false,
@@ -2455,9 +3011,11 @@ function createNebulaField(count: number, mobileQuality = false): Group {
 }
 
 /**
- * Layered additive shells around the observer core. They read as a corona and
- * keep the local browser identity as the brightest object in frame even when a
- * Kubo import fills the outer field with hundreds of markers.
+ * Layered additive corona around the observer core. It keeps the local
+ * browser identity as the brightest object in frame even when a Kubo import
+ * fills the outer field. Camera-facing sprites with the continuous
+ * render-spec.ts coronaProfile replace the former hard BackSide shells, whose
+ * rims banded (ABYSSAL_SPEC.coronaGain keeps the visible energy).
  */
 function createCoreCorona(mobileQuality: boolean): Group {
   const corona = new Group();
@@ -2468,25 +3026,542 @@ function createCoreCorona(mobileQuality: boolean): Group {
         [8.4, 0.032, 0x9fe8ff],
         [12.6, 0.018, 0xa897ff],
       ];
-  for (const [radius, opacity, color] of layers) {
-    const shell = new Mesh(
-      new SphereGeometry(
-        radius,
-        mobileQuality ? 12 : 20,
-        mobileQuality ? 8 : 14,
-      ),
-      new MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity,
-        side: BackSide,
-        blending: AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    shell.material.toneMapped = false;
-    shell.material.fog = false;
-    corona.add(shell);
-  }
+  corona.add(createLayeredCoronaSprite(layers));
   return corona;
+}
+
+/**
+ * Additive sprite with an analytic radial profile over its uv, the same
+ * formula as lib.rs corona_profile / glare_profile.
+ */
+function createAnalyticSpriteMaterial(
+  hex: number,
+  alpha: number,
+  profile: 'corona' | 'glare',
+): SpriteNodeMaterial {
+  const material = new SpriteNodeMaterial({
+    blending: AdditiveBlending,
+    depthWrite: false,
+    transparent: true,
+  });
+  const centred = uv().sub(0.5).mul(2);
+  const falloff = max(float(0), float(1).sub(dot(centred, centred)));
+  const squared = falloff.mul(falloff);
+  material.colorNode = color(hex);
+  material.opacityNode = (
+    profile === 'corona' ? squared : squared.mul(squared)
+  ).mul(alpha);
+  material.toneMapped = false;
+  material.fog = false;
+  return material;
+}
+
+/**
+ * The layered corona as one additive sprite: the summed (1 − ρᵢ²)² layer
+ * alphas with the alpha-weighted colour (render-spec.ts layeredCoronaAlpha).
+ * Additive layers commute, so this equals one sprite per layer and saves
+ * two draw calls on desktop.
+ */
+function createLayeredCoronaSprite(
+  layers: readonly (readonly [number, number, number])[],
+): Sprite {
+  const outer = Math.max(...layers.map(([radius]) => radius));
+  const material = new SpriteNodeMaterial({
+    blending: AdditiveBlending,
+    depthWrite: false,
+    transparent: true,
+  });
+  const centred = uv()
+    .sub(0.5)
+    .mul(2 * outer);
+  const radiusSquared = dot(centred, centred);
+  let alphaSum = float(0);
+  let colourSum = vec3(0, 0, 0);
+  for (const [radius, opacity, hex] of layers) {
+    const falloff = max(
+      float(0),
+      float(1).sub(radiusSquared.div(radius * radius)),
+    );
+    const alpha = falloff.mul(falloff).mul(opacity * ABYSSAL_SPEC.coronaGain);
+    alphaSum = alphaSum.add(alpha) as unknown as typeof alphaSum;
+    colourSum = colourSum.add(
+      color(hex).mul(alpha),
+    ) as unknown as typeof colourSum;
+  }
+  material.colorNode = colourSum.div(max(alphaSum, float(1e-6)));
+  material.opacityNode = alphaSum;
+  material.toneMapped = false;
+  material.fog = false;
+  const sprite = new Sprite(material);
+  sprite.scale.set(outer * 2, outer * 2, 1);
+  return sprite;
+}
+
+/**
+ * Soft halo behind the markers of one peer mesh (render-spec.ts
+ * PEER_HALO_SPEC). It shares the mesh's instance matrices, so size, emphasis
+ * and arrival scale follow the marker, and offsets each instance in the view
+ * plane like the Rust billboards. FogExp2 is applied from the halo's own view
+ * depth because the custom vertex stage bypasses Three's fog position.
+ */
+function createPeerHalo(
+  capacity: number,
+): Mesh<InstancedBufferGeometry, MeshBasicNodeMaterial> {
+  const plane = new PlaneGeometry(2, 2);
+  const geometry = new InstancedBufferGeometry();
+  geometry.setIndex(plane.getIndex());
+  geometry.setAttribute('position', plane.getAttribute('position'));
+  geometry.instanceCount = 0;
+  // Peer instance matrices, then (linear tint rgb, marker radius) per halo.
+  const matrices = new InstancedInterleavedBuffer(
+    new Float32Array(capacity * 16),
+    16,
+    1,
+  ).setUsage(DynamicDrawUsage);
+  const tints = new InstancedInterleavedBuffer(
+    new Float32Array(capacity * 4),
+    4,
+    1,
+  ).setUsage(DynamicDrawUsage);
+  const scaleColumn = markInstanced(
+    instancedBufferAttribute<'vec4'>(matrices, 'vec4', 16, 0),
+  );
+  const translation = markInstanced(
+    instancedBufferAttribute<'vec4'>(matrices, 'vec4', 16, 12),
+  );
+  const tint = markInstanced(
+    instancedBufferAttribute<'vec4'>(tints, 'vec4', 4, 0),
+  );
+  const fogDensity = uniform(0.0035);
+  const view = cameraViewMatrix.mul(vec4(translation.xyz, 1));
+  const offset = positionGeometry.xy.mul(
+    length(scaleColumn.xyz).mul(tint.w).mul(PEER_HALO_SPEC.scale),
+  );
+  const material = new MeshBasicNodeMaterial({
+    blending: AdditiveBlending,
+    depthWrite: false,
+    transparent: true,
+  });
+  material.vertexNode = cameraProjectionMatrix.mul(
+    vec4(view.xy.add(offset), view.zw),
+  );
+  const depth = varying(view.z.negate());
+  const fog = exp(fogDensity.mul(depth).pow(2).negate());
+  const falloff = max(
+    float(0),
+    float(1).sub(dot(positionGeometry.xy, positionGeometry.xy)),
+  );
+  const squared = falloff.mul(falloff);
+  material.colorNode = varying(tint.xyz).mul(fog);
+  material.opacityNode = squared.mul(squared).mul(PEER_HALO_SPEC.alpha);
+  material.toneMapped = false;
+  material.fog = false;
+  const mesh = new Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  mesh.visible = false;
+  mesh.userData.matrices = matrices;
+  mesh.userData.tints = tints;
+  mesh.userData.fogDensity = fogDensity;
+  return mesh;
+}
+
+// Band corners (endpoint, side) of the two triangles of one evidence segment.
+
+const EVIDENCE_BAND_CORNERS = new Float32Array([
+  0, -1, 1, -1, 1, 1, 0, -1, 1, 1, 0, 1,
+]);
+
+/** Bind the (start, end) position and colour pairs as instanced attributes. */
+function bindEvidenceBandAttributes(
+  geometry: InstancedBufferGeometry,
+  positions: Float32Array<ArrayBufferLike>,
+  colors: Float32Array<ArrayBufferLike>,
+): void {
+  const positionBuffer = new InstancedInterleavedBuffer(
+    positions as Float32Array,
+    6,
+    1,
+  ).setUsage(DynamicDrawUsage);
+  const colorBuffer = new InstancedInterleavedBuffer(
+    colors as Float32Array,
+    6,
+    1,
+  ).setUsage(DynamicDrawUsage);
+  geometry.setAttribute(
+    'instanceStart',
+    new InterleavedBufferAttribute(positionBuffer, 3, 0),
+  );
+  geometry.setAttribute(
+    'instanceEnd',
+    new InterleavedBufferAttribute(positionBuffer, 3, 3),
+  );
+  geometry.setAttribute(
+    'instanceColorStart',
+    new InterleavedBufferAttribute(colorBuffer, 3, 0),
+  );
+  geometry.setAttribute(
+    'instanceColorEnd',
+    new InterleavedBufferAttribute(colorBuffer, 3, 3),
+  );
+}
+
+function markEvidenceBandsDirty(geometry: InstancedBufferGeometry): void {
+  for (const name of ['instanceStart', 'instanceColorStart']) {
+    const attribute = geometry.getAttribute(name) as InterleavedBufferAttribute;
+    attribute.data.needsUpdate = true;
+  }
+}
+
+/**
+ * Evidence lines as the lib.rs EDGE_SHADER band: each segment is clipped at
+ * the near plane, expanded along its screen normal by half its width plus one
+ * anti-aliasing pixel, and box filtered. The width follows the latency/status
+ * brightness carried by the colour (render-spec.ts evidenceLineWidthPx) and
+ * the colour is weighted by brightness^(gamma − 1) (edgeHierarchyFactor).
+ */
+/**
+ * A band geometry bound to the edge buffers. Rebinding to other buffers must
+ * create a new geometry, because WebGPU render objects cache the attributes of
+ * a geometry they have already drawn.
+ */
+function createEvidenceBandGeometry(
+  positions: Float32Array<ArrayBufferLike>,
+  colors: Float32Array<ArrayBufferLike>,
+): InstancedBufferGeometry {
+  const geometry = new InstancedBufferGeometry();
+  geometry.setAttribute(
+    'position',
+    new BufferAttribute(new Float32Array(18), 3),
+  );
+  geometry.setAttribute(
+    'corner',
+    new BufferAttribute(EVIDENCE_BAND_CORNERS, 2),
+  );
+  bindEvidenceBandAttributes(geometry, positions, colors);
+  geometry.instanceCount = 0;
+  return geometry;
+}
+
+function createEvidenceBands(
+  positions: Float32Array<ArrayBufferLike>,
+  colors: Float32Array<ArrayBufferLike>,
+): Mesh<InstancedBufferGeometry, MeshBasicNodeMaterial> {
+  const geometry = createEvidenceBandGeometry(positions, colors);
+  const { minPx, maxPx, dim, bright } = EVIDENCE_LINE_WIDTH;
+  // The six band vertices are (endpoint, side) pairs wound counter-clockwise:
+  // (0,-1) (1,-1) (1,1) / (0,-1) (1,1) (0,1). Three's WebGPU pipeline uses
+  // frontFace CCW with cullMode Back for every non-DoubleSide material
+  // (WebGPUPipelineUtils 848-856) and WebGL culls the same way, so the
+  // previous clockwise order made every band triangle a back face: the draw
+  // and its 768 triangles were issued and nothing rasterised. Derive the same
+  // corners from the built-in vertex index; the geometry keeps its `corner`
+  // attribute for the WebGL path and markEvidenceBandsDirty.
+  const bandVertex = vertexIndex;
+  const corner = vec2(
+    select(
+      bandVertex.equal(1).or(bandVertex.equal(2)).or(bandVertex.equal(4)),
+      float(1),
+      float(0),
+    ),
+    select(
+      bandVertex.equal(2).or(bandVertex.equal(4)).or(bandVertex.equal(5)),
+      float(1),
+      float(-1),
+    ),
+  );
+  const start = attribute<'vec3'>('instanceStart', 'vec3');
+  const end = attribute<'vec3'>('instanceEnd', 'vec3');
+  // Per-endpoint colour picked in the vertex stage and interpolated, like the
+  // vertex colour of lib.rs EDGE_SHADER.
+  const tint = varying(
+    select(
+      corner.x.greaterThan(0.5),
+      attribute<'vec3'>('instanceColorEnd', 'vec3'),
+      attribute<'vec3'>('instanceColorStart', 'vec3'),
+    ),
+  );
+  const viewProjection = cameraProjectionMatrix.mul(cameraViewMatrix);
+  const startClip = viewProjection.mul(vec4(start, 1));
+  const endClip = viewProjection.mul(vec4(end, 1));
+  const near = float(0.1);
+  const startBehind = startClip.w.lessThan(near);
+  const endBehind = endClip.w.lessThan(near);
+  const startT = clamp(
+    near.sub(startClip.w).div(endClip.w.sub(startClip.w)),
+    0,
+    1,
+  );
+  const endT = clamp(near.sub(endClip.w).div(startClip.w.sub(endClip.w)), 0, 1);
+  const clippedStart = select(
+    startBehind,
+    mix(startClip, endClip, startT),
+    startClip,
+  );
+  const clippedEnd = select(endBehind, mix(endClip, startClip, endT), endClip);
+  const halfViewport = screenSize.mul(0.5);
+  const screenStart = clippedStart.xy.div(clippedStart.w).mul(halfViewport);
+  const screenEnd = clippedEnd.xy.div(clippedEnd.w).mul(halfViewport);
+  const delta = screenEnd.sub(screenStart);
+  const direction = delta.div(max(length(delta), 0.0001));
+  const normal = vec2(direction.y.negate(), direction.x);
+  const clip = select(corner.x.greaterThan(0.5), clippedEnd, clippedStart);
+  const brightness = max(tint.x, max(tint.y, tint.z));
+  const width = mix(
+    float(minPx),
+    float(maxPx),
+    clamp(brightness.sub(dim).div(bright - dim), 0, 1),
+  );
+  const extent = width.mul(0.5).add(1);
+  const offset = normal.mul(corner.y).mul(extent).div(halfViewport).mul(clip.w);
+  const material = new MeshBasicNodeMaterial({
+    blending: AdditiveBlending,
+    depthWrite: false,
+    transparent: true,
+  });
+  material.vertexNode = select(
+    startBehind.and(endBehind),
+    vec4(0, 0, -2, 1),
+    vec4(clip.xy.add(offset), clip.zw),
+  );
+  const band = varying(corner.y.mul(extent));
+  const bandWidth = varying(width);
+  const coverage = max(
+    float(0),
+    min(min(float(1), bandWidth), bandWidth.mul(0.5).add(0.5).sub(abs(band))),
+  );
+  material.colorNode = tint.mul(
+    pow(brightness, float(ABYSSAL_SPEC.edgeHierarchyGamma - 1)),
+  );
+  material.opacityNode = coverage.mul(0.78);
+  material.toneMapped = false;
+  material.fog = false;
+  const mesh = new Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
+/**
+ * Continuous atmosphere around the heart (render-spec.ts atmosphereProfile):
+ * an additive, fogged sprite that only tests depth, so the depth-writing heart
+ * hides it inside its silhouette like the former BackSide sphere, without the
+ * sphere's hard rim.
+ */
+function createAtmosphereSprite(): Sprite {
+  const material = createAnalyticSpriteMaterial(
+    0x73fbd3,
+    0.09 * ABYSSAL_SPEC.atmosphereGain,
+    'corona',
+  );
+  material.fog = true;
+  const sprite = new Sprite(material);
+  sprite.scale.set(4.35 * 2, 4.35 * 2, 1);
+  return sprite;
+}
+
+/**
+ * Low-cost bloom for the brightest emitter: an additive point-spread halo and
+ * a faint anamorphic streak through the heart (ABYSSAL_SPEC.glare/streak).
+ * They ignore depth like a lens effect and never pulse.
+ */
+function createHeartGlare(): Mesh<
+  InstancedBufferGeometry,
+  MeshBasicNodeMaterial
+> {
+  const { glare: halo, streak } = ABYSSAL_SPEC;
+  // The glare disc and the streak are additive, depth-ignoring billboards at
+  // the heart centre. Additive layers commute, so both are instances of one
+  // draw that reproduces the SpriteNodeMaterial billboard and the analytic
+  // (1 − ρ²)⁴ glare profile of createAnalyticSpriteMaterial.
+  const plane = new PlaneGeometry(1, 1);
+  const geometry = new InstancedBufferGeometry();
+  geometry.setIndex(plane.getIndex());
+  geometry.setAttribute('position', plane.getAttribute('position'));
+  geometry.setAttribute('uv', plane.getAttribute('uv'));
+  geometry.instanceCount = 2;
+  const discColor = new Color(halo.color);
+  const streakColor = new Color(streak.color);
+  // (width, height, linear rgb, alpha) per billboard.
+  const layers = new InstancedInterleavedBuffer(
+    new Float32Array([
+      halo.radius * 2,
+      halo.radius * 2,
+      discColor.r,
+      discColor.g,
+      discColor.b,
+      halo.alpha,
+      streak.width,
+      streak.height,
+      streakColor.r,
+      streakColor.g,
+      streakColor.b,
+      streak.alpha,
+    ]),
+    6,
+    1,
+  );
+  const size = markInstanced(
+    instancedBufferAttribute<'vec2'>(layers, 'vec2', 6, 0),
+  );
+  const tint = markInstanced(
+    instancedBufferAttribute<'vec4'>(layers, 'vec4', 6, 2),
+  );
+  const material = new MeshBasicNodeMaterial({
+    blending: AdditiveBlending,
+    depthTest: false,
+    depthWrite: false,
+    transparent: true,
+  });
+  const view = modelViewMatrix.mul(vec4(0, 0, 0, 1));
+  const worldScale = vec2(
+    length(modelWorldMatrix.mul(vec4(1, 0, 0, 0)).xyz),
+    length(modelWorldMatrix.mul(vec4(0, 1, 0, 0)).xyz),
+  );
+  const offset = positionGeometry.xy.mul(size).mul(worldScale);
+  material.vertexNode = cameraProjectionMatrix.mul(
+    vec4(view.xy.add(offset), view.zw),
+  );
+  const centred = uv().sub(0.5).mul(2);
+  const falloff = max(float(0), float(1).sub(dot(centred, centred)));
+  const squared = falloff.mul(falloff);
+  material.colorNode = varying(tint.xyz);
+  material.opacityNode = squared.mul(squared).mul(varying(tint.w));
+  material.toneMapped = false;
+  material.fog = false;
+  const glare = new Mesh(geometry, material);
+  glare.frustumCulled = false;
+  return glare;
+}
+
+/**
+ * Subtle vignette drawn last as a black NormalBlending full-screen quad, the
+ * same render-spec.ts vignetteAmount the Rust composite pass applies.
+ */
+function createVignette(): Mesh {
+  const { strength, inner } = ABYSSAL_SPEC.vignette;
+  const material = new MeshBasicNodeMaterial({
+    blending: NormalBlending,
+    depthTest: false,
+    depthWrite: false,
+    transparent: true,
+  });
+  const aspect = screenSize.x.div(screenSize.y);
+  const centred = screenUV.sub(0.5).mul(2).mul(vec2(aspect, 1));
+  const rho = centred.length().div(sqrt(aspect.mul(aspect).add(1)));
+  material.vertexNode = vec4(positionGeometry.xy, 0, 1);
+  material.colorNode = vec3(0, 0, 0);
+  material.opacityNode = smoothstep(inner, 1, rho).mul(strength);
+  material.toneMapped = false;
+  material.fog = false;
+  const mesh = new Mesh(new PlaneGeometry(2, 2), material);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 10_000;
+  return mesh;
+}
+
+/**
+ * Draw the dust field as instanced PointsNodeMaterial sprites so its declared
+ * size attenuation takes effect on WebGPU, where a Points primitive is always
+ * 1px (render-spec.ts dustPointSizePx). The createDustSprite stops are sampled
+ * with clamp-to-edge uv (dustSpriteAlpha) and brightened near the camera
+ * (dustDepthGain). Alpha to coverage stays off, so MSAA resolves plain
+ * coverage × alpha, the model lib.rs point_coverage reproduces.
+ */
+function createWebGLDust(points: Points): Points {
+  const position = points.geometry.getAttribute('position');
+  points.geometry.setDrawRange(0, position?.count ?? 0);
+  points.userData.capacity = position?.count ?? 0;
+  return points;
+}
+
+function createDepthSizedDust(points: Points): Sprite {
+  const source = points.material as PointsMaterial;
+  const { near, far, nearGain, farGain } = ABYSSAL_SPEC.dustDepth;
+  const positions = points.geometry.getAttribute('position') as BufferAttribute;
+  const colors = points.geometry.getAttribute('color') as BufferAttribute;
+  const material = new PointsNodeMaterial({
+    alphaTest: source.alphaTest,
+    blending: NormalBlending,
+    depthWrite: false,
+    size: source.size,
+    sizeAttenuation: source.sizeAttenuation,
+    transparent: true,
+  });
+  material.alphaToCoverage = false;
+  // BufferAttributeNode re-wraps a plain BufferAttribute in a non-instanced
+  // InterleavedBuffer, and the WebGPU vertex layout picks the step mode from
+  // `data.isInstancedInterleavedBuffer`. The sprite quad then read the first
+  // four dust positions per vertex and drew one giant grey wedge. Instanced
+  // interleaved buffers (sharing the same arrays) step once per dust point.
+  const instancePositions = new InstancedInterleavedBuffer(
+    positions.array as Float32Array,
+    3,
+    1,
+  );
+  const instanceColors = new InstancedInterleavedBuffer(
+    colors.array as Float32Array,
+    3,
+    1,
+  );
+  material.positionNode = markInstanced(
+    instancedBufferAttribute<'vec3'>(instancePositions, 'vec3', 3, 0),
+  );
+  const gain = mix(
+    float(nearGain),
+    float(farGain),
+    smoothstep(near, far, positionView.z.negate()),
+  );
+  material.colorNode = markInstanced(
+    instancedBufferAttribute<'vec3'>(instanceColors, 'vec3', 3, 0),
+  ).mul(gain);
+  const radius = length(clamp(uv(), 0, 1).sub(0.5).mul(2));
+  const profile = select(
+    radius.lessThan(0.3),
+    mix(float(1), float(0.9), radius.div(0.3)),
+    max(float(0), mix(float(0.9), float(0), radius.sub(0.3).div(0.7))),
+  );
+  material.opacityNode = profile.mul(source.opacity);
+  material.toneMapped = false;
+  material.fog = false;
+  source.map?.dispose();
+  source.dispose();
+  const sprite = new Sprite(material);
+  sprite.count = positions.count;
+  sprite.frustumCulled = false;
+  sprite.userData.capacity = positions.count;
+  return sprite;
+}
+
+/**
+ * Three's current TSL helper does not preserve its `instanced` flag for the
+ * non-matrix overload when the source is an InterleavedBuffer. Marking the
+ * generated node explicitly keeps WebGL2 and WebGPU on the same instance
+ * divisor and prevents billboard attributes from being read per vertex.
+ */
+function markInstanced<T>(node: T): T {
+  const candidate = node as T & {
+    setInstanced?: (value: boolean) => unknown;
+  };
+  candidate.setInstanced?.(true);
+  return node;
+}
+
+/** A second, deeper nebula cloud for parallax depth (ABYSSAL_SPEC.deepCloud). */
+function createDeepNebulaCloud(): Sprite | undefined {
+  const texture = createNebulaSprite();
+  if (texture === undefined) return undefined;
+  const { position, scale, color: hex, opacity } = ABYSSAL_SPEC.deepCloud;
+  const material = new SpriteMaterial({
+    blending: AdditiveBlending,
+    color: hex,
+    depthWrite: false,
+    map: texture,
+    opacity,
+    transparent: true,
+  });
+  material.toneMapped = false;
+  const cloud = new Sprite(material);
+  cloud.position.set(position[0], position[1], position[2]);
+  cloud.scale.set(scale[0], scale[1], 1);
+  cloud.userData.deepCloud = true;
+  return cloud;
 }

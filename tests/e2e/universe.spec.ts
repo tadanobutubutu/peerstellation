@@ -1,6 +1,13 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 
+// Rust/WASM and the Three fallback are intentionally exercised in cold,
+// headless contexts. A first navigation may include Vite transform, shader
+// compilation, and GPU adapter startup; keep the readiness assertion separate
+// from Playwright's normal action timeout so a cold worker is not reported as
+// a renderer failure.
+const SCENE_READY_TIMEOUT_MS = 90_000;
+
 const ACCESSIBILITY_TAGS = ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'];
 
 async function expectNoAutomatedAccessibilityViolations(
@@ -51,7 +58,7 @@ test('shows the 3D observatory immediately with semantic structure', async ({
       .evaluate((element) => element.closest('dialog')),
   ).toBeNull();
   await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready', {
-    timeout: 5_000,
+    timeout: SCENE_READY_TIMEOUT_MS,
   });
   await expect(canvas).toHaveAttribute('data-renderer', /^(WebGPU|WebGL 2)$/u);
   await expect(canvas).toHaveAttribute('data-skybox-status', 'ready', {
@@ -78,11 +85,32 @@ test('falls back to WebGL2 when WebGPU is unavailable', async ({ page }) => {
   await page.goto('/');
 
   await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready', {
-    timeout: 5_000,
+    timeout: SCENE_READY_TIMEOUT_MS,
   });
   await expect(page.locator('#universe-canvas')).toHaveAttribute(
     'data-renderer',
     'WebGL 2',
+  );
+});
+
+test('falls back to the complete Three.js scene when the Rust module cannot load', async ({
+  page,
+}) => {
+  await page.route('**/src/scene/renderer-wasm/**', (route) =>
+    route.abort('failed'),
+  );
+  await page.goto('/');
+
+  await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready', {
+    timeout: SCENE_READY_TIMEOUT_MS,
+  });
+  await expect(page.locator('#universe-canvas')).toHaveAttribute(
+    'data-renderer-engine',
+    'three-fallback',
+  );
+  await expect(page.locator('#universe-canvas')).toHaveAttribute(
+    'data-renderer',
+    /^(WebGPU|WebGL 2)$/u,
   );
 });
 
@@ -91,7 +119,21 @@ test('supports keyboard navigation, motion pause, and peer details', async ({
 }) => {
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready', {
-    timeout: 5_000,
+    timeout: SCENE_READY_TIMEOUT_MS,
+  });
+  await page.waitForFunction(() => {
+    const devWindow = window as Window & {
+      __peerstellationHooksReady?: boolean;
+    };
+    return devWindow.__peerstellationHooksReady === true;
+  });
+  await page.evaluate(() => {
+    const devWindow = window as Window & {
+      __peerstellationSetPeers?: (peers: readonly unknown[]) => void;
+    };
+    // Keep this interaction test deterministic while the real Helia observer
+    // continues to be covered by the dedicated identity test below.
+    devWindow.__peerstellationSetPeers?.([]);
   });
   await page.keyboard.press('Tab');
   await expect(page.locator('.skip-link')).toBeFocused();
@@ -117,8 +159,14 @@ test('supports keyboard navigation, motion pause, and peer details', async ({
   await page.getByRole('button', { name: /peer explorer|peers/i }).click();
   const dialog = page.getByRole('dialog', { name: /peer explorer/i });
   await expect(dialog).toBeVisible();
+  await expect(page.locator('#peer-search')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
+  // A modal returns focus to its invoking control; this keeps keyboard users
+  // anchored to the action that opened the explorer.
+  await expect(
+    page.getByRole('button', { name: /peer explorer|peers/i }),
+  ).toBeFocused();
 });
 
 test('supports WASD travel and a reversible right-click camera mode', async ({
@@ -126,7 +174,7 @@ test('supports WASD travel and a reversible right-click camera mode', async ({
 }) => {
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready', {
-    timeout: 5_000,
+    timeout: SCENE_READY_TIMEOUT_MS,
   });
   const canvas = page.locator('#universe-canvas');
   await page.getByRole('button', { name: /pause motion/i }).click();
@@ -144,31 +192,615 @@ test('supports WASD travel and a reversible right-click camera mode', async ({
   await expect(canvas).toHaveAttribute('data-pointer-mode', 'hover');
 });
 
+test('freezes automatic framing when camera mode is toggled', async ({
+  page,
+}) => {
+  for (const query of ['', '?renderer=three']) {
+    await page.goto(`/${query}`);
+    await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready', {
+      timeout: SCENE_READY_TIMEOUT_MS,
+    });
+    const canvas = page.locator('#universe-canvas');
+    await page.getByRole('button', { name: /pause motion/i }).click();
+
+    await page.evaluate(() => {
+      type FixturePeer = {
+        peerId: string;
+        status: 'connected';
+        source: 'kubo';
+        statusObservedAt: number;
+        firstSeenAt: number;
+        lastSeenAt: number;
+        direction: 'inbound' | 'outbound';
+        transport: string;
+        latencyMs: number;
+      };
+      const setPeers = (
+        window as Window & {
+          __peerstellationSetPeers?: (peers: readonly FixturePeer[]) => void;
+        }
+      ).__peerstellationSetPeers;
+      if (setPeers === undefined)
+        throw new Error('camera mode fixture is unavailable');
+      setPeers([
+        {
+          peerId: '12D3KooWModeNear',
+          status: 'connected',
+          source: 'kubo',
+          statusObservedAt: 1,
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+          direction: 'outbound',
+          transport: 'quic-v1',
+          latencyMs: 25,
+        },
+      ]);
+    });
+    await page.waitForTimeout(60);
+
+    await canvas.click({ button: 'right', position: { x: 180, y: 180 } });
+    await expect(canvas).toHaveAttribute('data-pointer-mode', 'camera');
+    const lockedDistance = Number(
+      await canvas.getAttribute('data-camera-distance'),
+    );
+
+    await page.evaluate(() => {
+      type FixturePeer = {
+        peerId: string;
+        status: 'connected';
+        source: 'kubo';
+        statusObservedAt: number;
+        firstSeenAt: number;
+        lastSeenAt: number;
+        direction: 'inbound' | 'outbound';
+        transport: string;
+        latencyMs: number;
+      };
+      const setPeers = (
+        window as Window & {
+          __peerstellationSetPeers?: (peers: readonly FixturePeer[]) => void;
+        }
+      ).__peerstellationSetPeers;
+      if (setPeers === undefined)
+        throw new Error('camera mode fixture is unavailable');
+      setPeers([
+        {
+          peerId: '12D3KooWModeFar',
+          status: 'connected',
+          source: 'kubo',
+          statusObservedAt: 2,
+          firstSeenAt: 2,
+          lastSeenAt: 2,
+          direction: 'outbound',
+          transport: 'quic-v1',
+          latencyMs: 5_000,
+        },
+      ]);
+    });
+
+    await page.getByRole('button', { name: /resume motion/i }).click();
+    await page.waitForTimeout(400);
+    const afterPeerChange = Number(
+      await canvas.getAttribute('data-camera-distance'),
+    );
+    expect(Math.abs(afterPeerChange - lockedDistance)).toBeLessThan(8);
+  }
+});
+
+test('supports pinch zoom on the Rust renderer and the Three fallback', async ({
+  page,
+}) => {
+  for (const query of ['', '?renderer=three']) {
+    await page.goto(`/${query}`);
+    await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready', {
+      timeout: SCENE_READY_TIMEOUT_MS,
+    });
+    const canvas = page.locator('#universe-canvas');
+    await page.getByRole('button', { name: /pause motion/i }).click();
+    const before = Number(await canvas.getAttribute('data-camera-distance'));
+
+    await canvas.evaluate((element) => {
+      const target = element as HTMLCanvasElement;
+      // Playwright dispatches synthetic pointer events rather than a native
+      // touch stream. Stubbing capture keeps this test focused on the gesture
+      // contract while exercising the production event handlers.
+      target.setPointerCapture = () => undefined;
+      target.releasePointerCapture = () => undefined;
+      target.hasPointerCapture = () => false;
+      const emit = (
+        type: string,
+        pointerId: number,
+        clientX: number,
+        clientY: number,
+      ) =>
+        target.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+            clientX,
+            clientY,
+            pointerId,
+            pointerType: 'touch',
+          }),
+        );
+      emit('pointerdown', 101, 200, 200);
+      emit('pointerdown', 102, 300, 200);
+      emit('pointermove', 102, 380, 200);
+      emit('pointerup', 101, 200, 200);
+      emit('pointerup', 102, 380, 200);
+    });
+
+    await expect(canvas).toBeFocused();
+    const after = Number(await canvas.getAttribute('data-camera-distance'));
+    expect(after).toBeLessThan(before);
+  }
+});
+
+test('restores automatic framing with the R reset shortcut', async ({
+  page,
+}) => {
+  for (const query of ['', '?renderer=three']) {
+    await page.goto(`/${query}`);
+    await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready', {
+      timeout: SCENE_READY_TIMEOUT_MS,
+    });
+    const canvas = page.locator('#universe-canvas');
+    await page.getByRole('button', { name: /pause motion/i }).click();
+    await canvas.focus();
+    await page.evaluate(() => {
+      type FixturePeer = {
+        peerId: string;
+        status: 'connected';
+        source: 'kubo';
+        statusObservedAt: number;
+        firstSeenAt: number;
+        lastSeenAt: number;
+        direction: 'inbound' | 'outbound';
+        transport: string;
+        latencyMs?: number;
+      };
+      const setPeers = (
+        window as Window & {
+          __peerstellationSetPeers?: (peers: readonly FixturePeer[]) => void;
+        }
+      ).__peerstellationSetPeers;
+      if (setPeers === undefined)
+        throw new Error('camera reset fixture missing');
+      setPeers([
+        {
+          peerId: '12D3KooWResetNear',
+          status: 'connected',
+          source: 'kubo',
+          statusObservedAt: 1,
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+          direction: 'outbound',
+          transport: 'quic-v1',
+          latencyMs: 25,
+        },
+      ]);
+    });
+    await page.keyboard.press('-');
+    const manualDistance = Number(
+      await canvas.getAttribute('data-camera-distance'),
+    );
+    await page.keyboard.press('r');
+    await page.evaluate(() => {
+      type FixturePeer = {
+        peerId: string;
+        status: 'connected';
+        source: 'kubo';
+        statusObservedAt: number;
+        firstSeenAt: number;
+        lastSeenAt: number;
+        direction: 'inbound' | 'outbound';
+        transport: string;
+        latencyMs?: number;
+      };
+      const setPeers = (
+        window as Window & {
+          __peerstellationSetPeers?: (peers: readonly FixturePeer[]) => void;
+        }
+      ).__peerstellationSetPeers;
+      if (setPeers === undefined)
+        throw new Error('camera reset fixture missing');
+      setPeers([
+        {
+          peerId: '12D3KooWResetFar',
+          status: 'connected',
+          source: 'kubo',
+          statusObservedAt: 2,
+          firstSeenAt: 2,
+          lastSeenAt: 2,
+          direction: 'outbound',
+          transport: 'quic-v1',
+          latencyMs: 5_000,
+        },
+      ]);
+    });
+    await page.getByRole('button', { name: /resume motion/i }).click();
+    await page.waitForTimeout(350);
+    const afterResetPeer = Number(
+      await canvas.getAttribute('data-camera-distance'),
+    );
+    expect(Math.abs(afterResetPeer - manualDistance)).toBeGreaterThan(1);
+  }
+});
+
+test('keeps automatic zoom disabled after manual travel when peers change', async ({
+  page,
+}) => {
+  for (const query of ['', '?renderer=three']) {
+    await page.goto(`/${query}`);
+    await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready', {
+      timeout: SCENE_READY_TIMEOUT_MS,
+    });
+    const canvas = page.locator('#universe-canvas');
+    await page.getByRole('button', { name: /pause motion/i }).click();
+    await canvas.focus();
+
+    await page.evaluate(() => {
+      type FixturePeer = {
+        peerId: string;
+        status: 'connected';
+        source: 'kubo';
+        statusObservedAt: number;
+        firstSeenAt: number;
+        lastSeenAt: number;
+        direction: 'inbound' | 'outbound';
+        transport: string;
+        latencyMs?: number;
+      };
+      const setPeers = (
+        window as Window & {
+          __peerstellationSetPeers?: (peers: readonly FixturePeer[]) => void;
+        }
+      ).__peerstellationSetPeers;
+      if (setPeers === undefined)
+        throw new Error('camera framing fixture is unavailable');
+      setPeers([
+        {
+          peerId: '12D3KooWCameraNear',
+          status: 'connected',
+          source: 'kubo',
+          statusObservedAt: 1,
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+          direction: 'outbound',
+          transport: 'quic-v1',
+          latencyMs: 30,
+        },
+      ]);
+    });
+
+    await page.keyboard.press('-');
+    const manualDistance = Number(
+      await canvas.getAttribute('data-camera-distance'),
+    );
+
+    await page.evaluate(() => {
+      type FixturePeer = {
+        peerId: string;
+        status: 'connected';
+        source: 'kubo';
+        statusObservedAt: number;
+        firstSeenAt: number;
+        lastSeenAt: number;
+        direction: 'inbound' | 'outbound';
+        transport: string;
+        latencyMs?: number;
+      };
+      const setPeers = (
+        window as Window & {
+          __peerstellationSetPeers?: (peers: readonly FixturePeer[]) => void;
+        }
+      ).__peerstellationSetPeers;
+      if (setPeers === undefined)
+        throw new Error('camera framing fixture is unavailable');
+      setPeers([
+        {
+          peerId: '12D3KooWCameraFar',
+          status: 'connected',
+          source: 'kubo',
+          statusObservedAt: 2,
+          firstSeenAt: 2,
+          lastSeenAt: 2,
+          direction: 'outbound',
+          transport: 'quic-v1',
+          latencyMs: 5_000,
+        },
+      ]);
+    });
+
+    await page.getByRole('button', { name: /resume motion/i }).click();
+    await page.waitForTimeout(350);
+    const afterPeerChange = Number(
+      await canvas.getAttribute('data-camera-distance'),
+    );
+    expect(Math.abs(afterPeerChange - manualDistance)).toBeLessThan(8);
+  }
+});
+
 test('opens accessible settings and applies a manual quality preset', async ({
   page,
 }) => {
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready', {
-    timeout: 5_000,
+    timeout: SCENE_READY_TIMEOUT_MS,
   });
   const settingsButton = page.getByRole('button', {
     name: /open observatory settings/i,
   });
   await settingsButton.click();
-  const dialog = page.getByRole('dialog', { name: /tune the sky/i });
+  const dialog = page.locator('#settings-dialog');
   await expect(dialog).toBeVisible();
   const preset = dialog.locator('#settings-preset');
   const qualityMode = dialog.locator('#settings-quality-mode');
   await expect(preset).toHaveValue('auto');
+  await expect(preset.locator('option')).toHaveCount(6);
+  await expect(preset.locator('option[value="medium"]')).toHaveCount(1);
   await preset.selectOption('highest');
   await expect(qualityMode).toHaveValue('manual');
-  await expect(page.locator('#settings-summary')).toContainText('highest');
+  await expect(page.locator('#settings-summary')).toContainText(/highest/i);
   await page.locator('#settings-reset').click();
   await expect(preset).toHaveValue('auto');
   await expect(qualityMode).toHaveValue('auto');
   await page.getByRole('button', { name: /apply and close/i }).click();
   await expect(dialog).toBeHidden();
   await expect(settingsButton).toBeFocused();
+});
+
+test('dismisses modal explorers from the backdrop on pointer devices', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready', {
+    timeout: SCENE_READY_TIMEOUT_MS,
+  });
+
+  const peerDialog = page.locator('#peer-dialog');
+  await page.locator('#peer-explorer-button').click();
+  await expect(peerDialog).toBeVisible();
+  await peerDialog.evaluate((dialog) =>
+    dialog.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+  );
+  await expect(peerDialog).toBeHidden();
+
+  const settingsDialog = page.locator('#settings-dialog');
+  await page.locator('#settings-button').click();
+  await expect(settingsDialog).toBeVisible();
+  await settingsDialog.evaluate((dialog) =>
+    dialog.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+  );
+  await expect(settingsDialog).toBeHidden();
+});
+
+test('applies the persistent camera pointer preference in both renderers', async ({
+  browser,
+}) => {
+  for (const query of ['', '?renderer=three']) {
+    const context = await browser.newContext({
+      baseURL: 'http://127.0.0.1:4175',
+    });
+    const rendererPage = await context.newPage();
+    try {
+      await rendererPage.goto(`/${query}`);
+      await expect(rendererPage.locator('html')).toHaveAttribute(
+        'data-scene',
+        'ready',
+        { timeout: SCENE_READY_TIMEOUT_MS },
+      );
+      await rendererPage
+        .getByRole('button', { name: /open observatory settings/i })
+        .click();
+      const dialog = rendererPage.locator('#settings-dialog');
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator('#settings-pointer-mode')).toHaveCount(1);
+      await dialog.locator('#settings-pointer-mode').selectOption('camera');
+      await rendererPage
+        .getByRole('button', { name: /apply and close/i })
+        .click();
+      await expect(rendererPage.locator('#universe-canvas')).toHaveAttribute(
+        'data-pointer-mode',
+        'camera',
+      );
+      await rendererPage.locator('#universe-canvas').focus();
+      await rendererPage.keyboard.press('Escape');
+      await expect(rendererPage.locator('#universe-canvas')).toHaveAttribute(
+        'data-pointer-mode',
+        'hover',
+      );
+    } finally {
+      await context.close();
+    }
+  }
+});
+
+test('publishes customized bindings through aria-keyshortcuts', async ({
+  page,
+}) => {
+  await page.goto('/?renderer=three');
+  await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready', {
+    timeout: SCENE_READY_TIMEOUT_MS,
+  });
+  await page
+    .getByRole('button', { name: /open observatory settings/i })
+    .click();
+  const binding = page.locator('[data-control="moveForward"]');
+  await binding.focus();
+  await binding.press('i');
+  await expect(binding).toHaveValue('I');
+  await page.getByRole('button', { name: /apply and close/i }).click();
+  await expect(page.locator('#universe-canvas')).toHaveAttribute(
+    'aria-keyshortcuts',
+    /\bI\b/u,
+  );
+});
+
+test('keeps the canvas accessible name in the selected language after orbit toggles', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready', {
+    timeout: SCENE_READY_TIMEOUT_MS,
+  });
+  await page
+    .getByRole('button', { name: /open observatory settings/i })
+    .click();
+  const dialog = page.locator('#settings-dialog');
+  await dialog.locator('#settings-language').selectOption('ja');
+  await dialog.locator('#settings-done').click();
+
+  const canvas = page.locator('#universe-canvas');
+  await canvas.click({ button: 'right', position: { x: 180, y: 180 } });
+  await expect(canvas).toHaveAttribute('data-pointer-mode', 'camera');
+  await expect(canvas).toHaveAttribute('aria-label', 'ライブ3D IPFSピア空間');
+  await page.keyboard.press('Escape');
+  await expect(canvas).toHaveAttribute('aria-label', 'ライブ3D IPFSピア空間');
+});
+
+test('lets visitors remap camera keys and choose the interface language', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page
+    .getByRole('button', { name: /open observatory settings/i })
+    .click();
+  const dialog = page.locator('#settings-dialog');
+  await expect(dialog.locator('#settings-language option')).toHaveCount(186);
+  await expect(dialog.locator('#language-coverage-list li')).toHaveCount(185);
+  await expect(
+    dialog.locator('#language-coverage-list li').filter({ hasText: '(sn)' }),
+  ).toContainText('%');
+  await expect(
+    dialog.locator('#language-coverage-list li').filter({ hasText: '(ae)' }),
+  ).toContainText('via fa');
+  const bindings = dialog.locator('[data-control]');
+  await expect(bindings).toHaveCount(11);
+  for (let index = 0; index < 11; index += 1) {
+    await expect(bindings.nth(index)).toHaveAttribute('id', /.+/);
+    await expect(bindings.nth(index)).toHaveAttribute('name', /.+/);
+  }
+  await dialog.locator('#settings-language').selectOption('ja');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
+  await expect(
+    dialog.locator('#settings-preset option[value="highest"]'),
+  ).toHaveText('最高 — 詳細を優先');
+  await expect(
+    dialog.locator('#settings-pointer-mode option[value="hover"]'),
+  ).toHaveText('ホバーでピア詳細を表示');
+  await expect(dialog.locator('.settings-credits summary')).toHaveText(
+    'クレジットとライセンス',
+  );
+  await expect(dialog.locator('#skybox-credit')).toContainText('完全なソース');
+  await expect(page.locator('#peer-explorer-button')).toHaveAttribute(
+    'aria-label',
+    /ピアエクスプローラーを開く/u,
+  );
+
+  const forward = dialog.locator('[data-control="moveForward"]');
+  await forward.focus();
+  await page.keyboard.press('KeyI');
+  await expect(forward).toHaveValue('I');
+  await expect(forward).toHaveAttribute('data-code', 'KeyI');
+
+  // The bridge packs also carry their actual script direction. These two
+  // locales intentionally disagree with Intl.Locale's default scripts and
+  // guard against an RTL/LTR flip during lazy loading.
+  await dialog.locator('#settings-language').selectOption('ae');
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+  await expect(dialog.locator('#settings-title')).not.toHaveText(
+    'Tune the sky',
+  );
+  await dialog.locator('#settings-language').selectOption('ks');
+  await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
+  await expect(dialog.locator('#settings-title')).not.toHaveText(
+    'Tune the sky',
+  );
+});
+
+test('adapts automatically to browser locale and timezone without trusting VPN headers', async ({
+  browser,
+}) => {
+  const scenarios = [
+    {
+      locale: 'ja-JP',
+      timezoneId: 'Asia/Tokyo',
+      language: 'ja',
+      region: '日本',
+    },
+    {
+      locale: 'de-DE',
+      timezoneId: 'Europe/Berlin',
+      language: 'de',
+      region: 'Deutschland',
+    },
+    {
+      locale: 'ar-SA',
+      timezoneId: 'Asia/Riyadh',
+      language: 'ar',
+      region: 'المملكة العربية السعودية',
+    },
+  ] as const;
+
+  for (const scenario of scenarios) {
+    const context = await browser.newContext({
+      baseURL: 'http://127.0.0.1:4175',
+      extraHTTPHeaders: {
+        'CF-IPCountry': 'US',
+        'X-Forwarded-For': '8.8.8.8',
+      },
+      locale: scenario.locale,
+      timezoneId: scenario.timezoneId,
+    });
+    const scenarioPage = await context.newPage();
+    try {
+      await scenarioPage.goto('/');
+      await expect(scenarioPage.locator('html')).toHaveAttribute(
+        'lang',
+        scenario.language,
+      );
+      await expect(scenarioPage.locator('html')).toHaveAttribute(
+        'dir',
+        scenario.language === 'ar' ? 'rtl' : 'ltr',
+      );
+      await scenarioPage.locator('#settings-button').click();
+      if (scenario.language === 'ar') {
+        await expect(scenarioPage.locator('#settings-title')).not.toHaveText(
+          'Tune the sky',
+        );
+        await expect(
+          scenarioPage.locator('#settings-preset option[value="highest"]'),
+        ).not.toHaveText('Highest — force detail');
+      }
+      await expect(scenarioPage.locator('#detected-region')).toContainText(
+        scenario.region,
+      );
+    } finally {
+      await context.close();
+    }
+  }
+});
+
+test('keeps camera controls discoverable inside settings instead of the scene overlay', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.locator('#universe-canvas')).toBeVisible();
+  await expect(page.locator('.scene-guide')).toHaveCount(0);
+
+  await page
+    .getByRole('button', { name: /open observatory settings/i })
+    .click();
+  const dialog = page.getByRole('dialog', { name: /tune the sky/i });
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.locator('fieldset', { hasText: 'Controls' }),
+  ).toContainText('WASD');
+  await expect(
+    dialog.locator('fieldset', { hasText: 'Controls' }),
+  ).toContainText(/hover/i);
 });
 
 test('honors reduced motion before the first rendered frame', async ({
@@ -190,6 +822,9 @@ test('honors reduced motion before the first rendered frame', async ({
 test('reflows at 320 CSS pixels and 200 percent text size', async ({
   page,
 }) => {
+  // A cold Helia/WebGL bootstrap can take longer than the default 30 seconds
+  // on a shared CI runner; the layout assertions themselves remain strict.
+  test.setTimeout(45_000);
   await page.setViewportSize({ width: 320, height: 780 });
   await page.goto('/');
   await page.evaluate(() => {
@@ -309,7 +944,7 @@ test('keeps network state and peer count names discoverable at a standard phone 
     'status',
   );
   await expect(page.locator('#peer-explorer-button')).toHaveAccessibleName(
-    /open peer explorer, 0 peers tracked, 0 browser live peers/i,
+    /open peer explorer.*0 browser peers connected.*0 peers tracked/i,
   );
 });
 
@@ -367,6 +1002,28 @@ test('imports local Kubo peers without relabelling them as browser-live', async 
   await expect(page.locator('#header-peer-count')).toHaveText('3');
   await expect(page.locator('#kubo-status')).toContainText('3 peers observed');
 
+  await page.waitForTimeout(8_100);
+  await expect(page.locator('#kubo-status')).toHaveAttribute(
+    'data-visible',
+    'false',
+  );
+  await expect(page.locator('#kubo-status')).toHaveAttribute(
+    'aria-hidden',
+    'true',
+  );
+
+  await page.locator('#kubo-probe').click();
+  await expect(page.locator('#kubo-status')).toContainText('3 peers observed');
+  await page.locator('#kubo-probe').click();
+  await expect(page.locator('#kubo-status')).toHaveAttribute(
+    'data-visible',
+    'false',
+  );
+  await expect(page.locator('#kubo-status')).toHaveAttribute(
+    'aria-hidden',
+    'true',
+  );
+
   await page.getByRole('button', { name: /peer explorer|peers/i }).click();
   await expect(page.locator('.peer-row[data-source="kubo"]')).toHaveCount(3);
 });
@@ -394,7 +1051,6 @@ test('keeps every observatory layer separated across the responsive matrix', asy
       const selectors = [
         '.hero-copy',
         '.scene-legend',
-        '.scene-guide',
         '.node-status',
         '.metric-deck',
         '.scope-note',
@@ -533,6 +1189,39 @@ test('preserves the focused peer and its expanded state across live updates', as
   expect(result.lastObservedText).not.toMatch(/^\d{4}-\d{2}-\d{2}T/u);
   expect(result.lastObservedMachineValue).toMatch(/^1970-01-01T/u);
   await expectNoAutomatedAccessibilityViolations(page);
+});
+
+test('rebuilds retained peer detail labels after a locale switch', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const moduleUrl = new URL('/src/ui/peer-list.ts', window.location.origin)
+      .href;
+    const { renderPeerList } = (await import(
+      /* @vite-ignore */ moduleUrl
+    )) as typeof import('../../src/ui/peer-list.ts');
+    const list = document.querySelector<HTMLOListElement>('#peer-list');
+    const empty = document.querySelector<HTMLElement>('#peer-empty');
+    if (list === null || empty === null) {
+      throw new Error('Peer explorer fixture is missing');
+    }
+    const peer = {
+      peerId: '12D3KooWLocaleSwitch',
+      status: 'connected' as const,
+      statusObservedAt: 1,
+      firstSeenAt: 1,
+      lastSeenAt: 1,
+    };
+    renderPeerList(list, empty, [peer], 1, 'en');
+    const englishLabel = list.querySelector('dt')?.textContent;
+    renderPeerList(list, empty, [peer], 1, 'ja');
+    const japaneseLabel = list.querySelector('dt')?.textContent;
+    return { englishLabel, japaneseLabel, locale: list.dataset.locale };
+  });
+  expect(result.englishLabel).toBe('Full peer ID');
+  expect(result.japaneseLabel).toBe('完全なピアID');
+  expect(result.locale).toBe('ja');
 });
 
 test('keeps text access visible when GPU initialization fails', async ({
@@ -739,17 +1428,23 @@ test('renders a 1,024-peer Kubo import without reframing away from the core', as
         .locator('#universe-canvas')
         .getAttribute('data-camera-distance'),
     ),
-  ).toBeLessThanOrEqual(180);
+  ).toBeLessThanOrEqual(360);
   await expect(page.locator('#universe-canvas')).toHaveAttribute(
     'data-draw-calls',
     /\d+/u,
     { timeout: 8_000 },
   );
-  expect(
-    Number(
-      await page.locator('#universe-canvas').getAttribute('data-draw-calls'),
-    ),
-  ).toBeLessThanOrEqual(16);
+  const drawCalls = Number(
+    await page.locator('#universe-canvas').getAttribute('data-draw-calls'),
+  );
+  const renderer = await page
+    .locator('#universe-canvas')
+    .getAttribute('data-renderer');
+  // Rust's compact render plan stays at ten calls for this fixture. Three's
+  // compatibility path retains the layered visual contract (core halo,
+  // panorama, orbit, and the two evidence-backed peer classes), which costs
+  // a handful of extra submissions on WebGL2 but remains bounded.
+  expect(drawCalls).toBeLessThanOrEqual(renderer === 'WebGPU' ? 16 : 24);
 });
 
 test('keeps a Kubo-only first view anchored on the nearest imported peers', async ({
@@ -803,9 +1498,9 @@ test('keeps a Kubo-only first view anchored on the nearest imported peers', asyn
   });
   expect(result.kuboCount).toBe(48);
   expect(result.fitRadius).toBeGreaterThan(0);
-  expect(result.nearestRadius).toBeLessThan(150);
+  expect(result.nearestRadius).toBeLessThan(300);
   expect(result.fitRadius).toBeLessThan(result.furthestRadius);
-  expect(result.cameraDistance).toBeLessThanOrEqual(180);
+  expect(result.cameraDistance).toBeLessThanOrEqual(360);
 });
 
 test('keeps a browser-live edge visible on a narrow viewport beside Kubo peers', async ({
@@ -865,6 +1560,66 @@ test('keeps a browser-live edge visible on a narrow viewport beside Kubo peers',
     /[1-9]\d*/u,
     { timeout: 5_000 },
   );
+});
+
+test('retains disconnected observations as dead stars without evidence lines', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready');
+  const result = await page.evaluate(() => {
+    type FixturePeer = {
+      peerId: string;
+      status: 'connected' | 'disconnected';
+      source: 'browser';
+      statusObservedAt: number;
+      firstSeenAt: number;
+      lastSeenAt: number;
+      direction: 'inbound' | 'outbound';
+      transport: string;
+      latencyMs?: number;
+    };
+    const setPeers = (
+      window as Window & {
+        __peerstellationSetPeers?: (peers: readonly FixturePeer[]) => void;
+      }
+    ).__peerstellationSetPeers;
+    if (setPeers === undefined)
+      throw new Error('development dead-star fixture is unavailable');
+    const connected: FixturePeer = {
+      peerId: '12D3KooWDeadStarConnected',
+      status: 'connected',
+      source: 'browser',
+      statusObservedAt: 2,
+      firstSeenAt: 2,
+      lastSeenAt: 2,
+      direction: 'outbound',
+      transport: 'websocket',
+      latencyMs: 36,
+    };
+    const disconnected: FixturePeer = {
+      ...connected,
+      peerId: '12D3KooWDeadStarDisconnected',
+      status: 'disconnected',
+      statusObservedAt: 3,
+      lastSeenAt: 3,
+    };
+    setPeers([connected]);
+    const lineWhileConnected =
+      document.querySelector<HTMLCanvasElement>('#universe-canvas')?.dataset
+        .edgeSegments;
+    setPeers([disconnected]);
+    const canvas =
+      document.querySelector<HTMLCanvasElement>('#universe-canvas');
+    return {
+      lineWhileConnected,
+      lineAfterDisconnect: canvas?.dataset.edgeSegments,
+      disconnectedNodes: canvas?.dataset.disconnectedNodeCount,
+    };
+  });
+  expect(result.lineWhileConnected).toBe('1');
+  expect(result.lineAfterDisconnect).toBe('0');
+  expect(result.disconnectedNodes).toBe('1');
 });
 
 test('draws relay edges only when both relay endpoints are observed', async ({

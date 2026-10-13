@@ -5,7 +5,7 @@ Peerstellation is a web-only, real-time 3D observatory for peers reachable from 
 ## Primary pages
 
 - [Peerstellation live observatory](https://ipfsuniverse.xyz/): the interactive 3D peer observatory.
-- [Source repository](https://github.com/tadanobutubutu/peerstellation): TypeScript, Rust WebAssembly, and Zig WebAssembly source.
+- [Source repository](https://github.com/tadanobutubutu/peerstellation): TypeScript and Rust WebAssembly source.
 - [Documentation](https://github.com/tadanobutubutu/peerstellation#readme): setup, safety boundaries, and deployment notes.
 
 ## Usage boundaries

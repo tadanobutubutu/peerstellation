@@ -1,0 +1,1073 @@
+{
+  "version": 1,
+  "locales": {
+    "aa": {
+      "target": "aa",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "ab": {
+      "target": "ab",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "ae": {
+      "target": "fa",
+      "dir": "rtl",
+      "script": "Arab",
+      "residue": 0
+    },
+    "af": {
+      "target": "af",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0203
+    },
+    "ak": {
+      "target": "ak",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "am": {
+      "target": "am",
+      "dir": "ltr",
+      "script": "Ethi",
+      "residue": 0
+    },
+    "an": {
+      "target": "es",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "ar": {
+      "target": "ar",
+      "dir": "rtl",
+      "script": "Arab",
+      "residue": 0
+    },
+    "as": {
+      "target": "as",
+      "dir": "ltr",
+      "script": "Beng",
+      "residue": 0
+    },
+    "av": {
+      "target": "av",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0.0254
+    },
+    "ay": {
+      "target": "ay",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "az": {
+      "target": "az",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "ba": {
+      "target": "ba",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "be": {
+      "target": "be",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "bg": {
+      "target": "bg",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0.0051
+    },
+    "bh": {
+      "target": "bh",
+      "dir": "ltr",
+      "script": "Deva",
+      "residue": 0
+    },
+    "bi": {
+      "target": "fr",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "bm": {
+      "target": "bm",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "bn": {
+      "target": "bn",
+      "dir": "ltr",
+      "script": "Beng",
+      "residue": 0
+    },
+    "bo": {
+      "target": "bo",
+      "dir": "ltr",
+      "script": "Tibt",
+      "residue": 0
+    },
+    "br": {
+      "target": "br",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "bs": {
+      "target": "bs",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0761
+    },
+    "ca": {
+      "target": "ca",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "ce": {
+      "target": "ce",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "ch": {
+      "target": "ch",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0508
+    },
+    "co": {
+      "target": "co",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0711
+    },
+    "cr": {
+      "target": "fr",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "cs": {
+      "target": "cs",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0254
+    },
+    "cu": {
+      "target": "ru",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "cv": {
+      "target": "cv",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0.0051
+    },
+    "cy": {
+      "target": "cy",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "da": {
+      "target": "da",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0761
+    },
+    "dv": {
+      "target": "dv",
+      "dir": "rtl",
+      "script": "Thaa",
+      "residue": 0
+    },
+    "dz": {
+      "target": "dz",
+      "dir": "ltr",
+      "script": "Tibt",
+      "residue": 0
+    },
+    "ee": {
+      "target": "ee",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "el": {
+      "target": "el",
+      "dir": "ltr",
+      "script": "Grek",
+      "residue": 0.0102
+    },
+    "eo": {
+      "target": "eo",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "et": {
+      "target": "et",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0203
+    },
+    "eu": {
+      "target": "eu",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "fa": {
+      "target": "fa",
+      "dir": "rtl",
+      "script": "Arab",
+      "residue": 0
+    },
+    "ff": {
+      "target": "ff",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "fi": {
+      "target": "fi",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "fj": {
+      "target": "fj",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "fo": {
+      "target": "fo",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "fy": {
+      "target": "fy",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.1015
+    },
+    "ga": {
+      "target": "ga",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "gd": {
+      "target": "gd",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "gl": {
+      "target": "gl",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "gn": {
+      "target": "gn",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "gu": {
+      "target": "gu",
+      "dir": "ltr",
+      "script": "Gujr",
+      "residue": 0
+    },
+    "gv": {
+      "target": "gv",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0203
+    },
+    "ha": {
+      "target": "ha",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0305
+    },
+    "he": {
+      "target": "he",
+      "dir": "rtl",
+      "script": "Hebr",
+      "residue": 0
+    },
+    "hi": {
+      "target": "hi",
+      "dir": "ltr",
+      "script": "Deva",
+      "residue": 0
+    },
+    "ho": {
+      "target": "sw",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "hr": {
+      "target": "hr",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0305
+    },
+    "ht": {
+      "target": "ht",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "hu": {
+      "target": "hu",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0203
+    },
+    "hy": {
+      "target": "hy",
+      "dir": "ltr",
+      "script": "Armn",
+      "residue": 0.0051
+    },
+    "hz": {
+      "target": "af",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0203
+    },
+    "ia": {
+      "target": "fr",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "id": {
+      "target": "id",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "ie": {
+      "target": "fr",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "ig": {
+      "target": "ig",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "ii": {
+      "target": "zh-CN",
+      "dir": "ltr",
+      "script": "Hans",
+      "residue": 0
+    },
+    "ik": {
+      "target": "sw",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "io": {
+      "target": "fr",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "is": {
+      "target": "is",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "it": {
+      "target": "it",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "iu": {
+      "target": "iu",
+      "dir": "ltr",
+      "script": "Cans",
+      "residue": 0
+    },
+    "jv": {
+      "target": "jv",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0457
+    },
+    "ka": {
+      "target": "ka",
+      "dir": "ltr",
+      "script": "Geor",
+      "residue": 0.0051
+    },
+    "kg": {
+      "target": "kg",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "ki": {
+      "target": "sw",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "kj": {
+      "target": "sw",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "kk": {
+      "target": "kk",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "kl": {
+      "target": "kl",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0203
+    },
+    "km": {
+      "target": "km",
+      "dir": "ltr",
+      "script": "Khmr",
+      "residue": 0
+    },
+    "kn": {
+      "target": "kn",
+      "dir": "ltr",
+      "script": "Knda",
+      "residue": 0
+    },
+    "kr": {
+      "target": "kr",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "ks": {
+      "target": "hi",
+      "dir": "ltr",
+      "script": "Deva",
+      "residue": 0
+    },
+    "ku": {
+      "target": "ku",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0863
+    },
+    "kv": {
+      "target": "kv",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "kw": {
+      "target": "fr",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "ky": {
+      "target": "ky",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0.0152
+    },
+    "la": {
+      "target": "la",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0914
+    },
+    "lb": {
+      "target": "lb",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0558
+    },
+    "lg": {
+      "target": "lg",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0355
+    },
+    "li": {
+      "target": "li",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0812
+    },
+    "ln": {
+      "target": "ln",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "lo": {
+      "target": "lo",
+      "dir": "ltr",
+      "script": "Laoo",
+      "residue": 0.0102
+    },
+    "lt": {
+      "target": "lt",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "lu": {
+      "target": "fr",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "lv": {
+      "target": "lv",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "mg": {
+      "target": "mg",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0964
+    },
+    "mh": {
+      "target": "mh",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.2386
+    },
+    "mi": {
+      "target": "mi",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "mk": {
+      "target": "mk",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0.0051
+    },
+    "ml": {
+      "target": "ml",
+      "dir": "ltr",
+      "script": "Mlym",
+      "residue": 0
+    },
+    "mn": {
+      "target": "mn",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "mr": {
+      "target": "mr",
+      "dir": "ltr",
+      "script": "Deva",
+      "residue": 0
+    },
+    "ms": {
+      "target": "ms",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "mt": {
+      "target": "mt",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0761
+    },
+    "my": {
+      "target": "my",
+      "dir": "ltr",
+      "script": "Mymr",
+      "residue": 0.0152
+    },
+    "na": {
+      "target": "af",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0203
+    },
+    "nb": {
+      "target": "nb",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.066
+    },
+    "nd": {
+      "target": "zu",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "ne": {
+      "target": "ne",
+      "dir": "ltr",
+      "script": "Deva",
+      "residue": 0
+    },
+    "ng": {
+      "target": "af",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0203
+    },
+    "nl": {
+      "target": "nl",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0457
+    },
+    "nn": {
+      "target": "no",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.066
+    },
+    "no": {
+      "target": "no",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0558
+    },
+    "nr": {
+      "target": "nr",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "nv": {
+      "target": "es",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "ny": {
+      "target": "ny",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0609
+    },
+    "oc": {
+      "target": "oc",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "oj": {
+      "target": "fr",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "om": {
+      "target": "om",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "or": {
+      "target": "or",
+      "dir": "ltr",
+      "script": "Orya",
+      "residue": 0
+    },
+    "os": {
+      "target": "os",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "pa": {
+      "target": "pa",
+      "dir": "ltr",
+      "script": "Guru",
+      "residue": 0
+    },
+    "pi": {
+      "target": "hi",
+      "dir": "ltr",
+      "script": "Deva",
+      "residue": 0
+    },
+    "pl": {
+      "target": "pl",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "ps": {
+      "target": "ps",
+      "dir": "rtl",
+      "script": "Arab",
+      "residue": 0
+    },
+    "pt": {
+      "target": "pt",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "qu": {
+      "target": "qu",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "rm": {
+      "target": "de",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0305
+    },
+    "rn": {
+      "target": "rn",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "ro": {
+      "target": "ro",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0305
+    },
+    "ru": {
+      "target": "ru",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "rw": {
+      "target": "rw",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "sa": {
+      "target": "sa",
+      "dir": "ltr",
+      "script": "Deva",
+      "residue": 0
+    },
+    "sc": {
+      "target": "it",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "sd": {
+      "target": "sd",
+      "dir": "rtl",
+      "script": "Arab",
+      "residue": 0
+    },
+    "se": {
+      "target": "se",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "sg": {
+      "target": "sg",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "si": {
+      "target": "si",
+      "dir": "ltr",
+      "script": "Sinh",
+      "residue": 0.0051
+    },
+    "sk": {
+      "target": "sk",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "sl": {
+      "target": "sl",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "sm": {
+      "target": "sm",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "sn": {
+      "target": "sn",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.2437
+    },
+    "so": {
+      "target": "so",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "sq": {
+      "target": "sq",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "sr": {
+      "target": "sr",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "ss": {
+      "target": "ss",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "st": {
+      "target": "st",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0305
+    },
+    "su": {
+      "target": "su",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0305
+    },
+    "sv": {
+      "target": "sv",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0457
+    },
+    "sw": {
+      "target": "sw",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "ta": {
+      "target": "ta",
+      "dir": "ltr",
+      "script": "Taml",
+      "residue": 0
+    },
+    "te": {
+      "target": "te",
+      "dir": "ltr",
+      "script": "Telu",
+      "residue": 0
+    },
+    "tg": {
+      "target": "tg",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "th": {
+      "target": "th",
+      "dir": "ltr",
+      "script": "Thai",
+      "residue": 0
+    },
+    "ti": {
+      "target": "ti",
+      "dir": "ltr",
+      "script": "Ethi",
+      "residue": 0.0051
+    },
+    "tk": {
+      "target": "tk",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "tl": {
+      "target": "tl",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0964
+    },
+    "tn": {
+      "target": "tn",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "to": {
+      "target": "to",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "tr": {
+      "target": "tr",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "ts": {
+      "target": "ts",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "tt": {
+      "target": "tt",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "tw": {
+      "target": "tw",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0051
+    },
+    "ty": {
+      "target": "ty",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "ug": {
+      "target": "ug",
+      "dir": "rtl",
+      "script": "Arab",
+      "residue": 0.0254
+    },
+    "uk": {
+      "target": "uk",
+      "dir": "ltr",
+      "script": "Cyrl",
+      "residue": 0
+    },
+    "ur": {
+      "target": "ur",
+      "dir": "rtl",
+      "script": "Arab",
+      "residue": 0
+    },
+    "uz": {
+      "target": "uz",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "ve": {
+      "target": "ve",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "vi": {
+      "target": "vi",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    },
+    "vo": {
+      "target": "de",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0305
+    },
+    "wa": {
+      "target": "fr",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0102
+    },
+    "wo": {
+      "target": "wo",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0355
+    },
+    "xh": {
+      "target": "xh",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0152
+    },
+    "yi": {
+      "target": "yi",
+      "dir": "rtl",
+      "script": "Hebr",
+      "residue": 0
+    },
+    "yo": {
+      "target": "yo",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0.0203
+    },
+    "za": {
+      "target": "zh-CN",
+      "dir": "ltr",
+      "script": "Hans",
+      "residue": 0
+    },
+    "zh": {
+      "target": "zh",
+      "dir": "ltr",
+      "script": "Hans",
+      "residue": 0
+    },
+    "zu": {
+      "target": "zu",
+      "dir": "ltr",
+      "script": "Latn",
+      "residue": 0
+    }
+  }
+}

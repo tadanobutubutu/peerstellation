@@ -32,31 +32,31 @@
     <link rel="stylesheet" href="/src/styles.css">
   </head>
   <body class="font-display">
-    <a class="skip-link" href="#universe-main">Skip to the observatory</a>
+    <a class="skip-link" href="#universe-main" data-i18n="skipLink">Skip to the observatory</a>
 
-    <header class="topbar" aria-label="Site header">
-      <a class="brand" href="/" aria-label="Peerstellation home">
-        <svg class="brand__mark" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+    <header class="topbar" aria-label="Site header" data-i18n-attr="aria-label:siteHeader">
+      <a class="brand" href="/" aria-label="Peerstellation home" data-i18n-attr="aria-label:brandHome">
+        <svg class="brand__mark" viewBox="0 0 40 40" aria-hidden="true">
           <circle cx="20" cy="20" r="4.2" />
-          <ellipse cx="20" cy="20" rx="16" ry="7.2" transform="rotate(-28 20 20)" />
-          <ellipse cx="20" cy="20" rx="16" ry="7.2" transform="rotate(32 20 20)" />
+          <ellipse class="brand__orbit brand__orbit--a" cx="20" cy="20" rx="16" ry="7.2" />
+          <ellipse class="brand__orbit brand__orbit--b" cx="20" cy="20" rx="16" ry="7.2" />
           <circle cx="31.6" cy="12.3" r="2.1" />
         </svg>
         <span class="brand__name">PEER<strong>STELLATION</strong></span>
       </a>
 
-      <div class="topbar__actions" role="group" aria-label="Observatory controls">
+      <div class="topbar__actions" role="group" aria-label="Observatory controls" data-i18n-attr="aria-label:observatoryControls">
         <span class="connection-chip" role="status" aria-live="polite" aria-atomic="true">
           <i class="connection-chip__dot" aria-hidden="true"></i>
-          <span id="header-network-state">Connecting</span>
+          <span id="header-network-state" data-i18n="connecting">Connecting</span>
         </span>
-        <button class="text-button local-kubo-button" id="kubo-probe" type="button" aria-label="Read local Kubo daemon" title="Read local Kubo daemon">
-          <svg class="kubo-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <button class="text-button local-kubo-button" id="kubo-probe" type="button" aria-label="Read local Kubo daemon" title="Read local Kubo daemon" data-i18n-attr="aria-label:readKubo,title:readKubo">
+          <svg class="kubo-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="m12 3 7.8 4.5v9L12 21l-7.8-4.5v-9L12 3Z" />
             <circle cx="12" cy="12" r="2.1" />
           </svg>
         </button>
-        <button class="text-button" id="network-retry" type="button" hidden>Retry</button>
+        <button class="text-button" id="network-retry" type="button" hidden data-i18n="retry">Retry</button>
         <button
           class="icon-button settings-button"
           id="settings-button"
@@ -64,12 +64,13 @@
           aria-haspopup="dialog"
           aria-label="Open observatory settings"
           title="Settings"
+          data-i18n-attr="aria-label:openSettings,title:settings"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="m9.6 3.3.5-1.1h3.8l.5 1.1 1.2.5 1.2-.5 2.7 2.7-.5 1.2.5 1.2 1.1.5v3.8l-1.1.5-.5 1.2.5 1.2-2.7 2.7-1.2-.5-1.2.5-.5 1.1h-3.8l-.5-1.1-1.2-.5-1.2.5-2.7-2.7.5-1.2-.5-1.2-1.1-.5V9l1.1-.5.5-1.2-.5-1.2 2.7-2.7 1.2.5 1.2-.5Z" />
             <circle cx="12" cy="11" r="3.1" />
           </svg>
-          <span class="sr-only">Settings</span>
+          <span class="sr-only" data-i18n="settings">Settings</span>
         </button>
         <button
           class="icon-button"
@@ -77,13 +78,14 @@
           type="button"
           aria-pressed="false"
           aria-label="Pause motion"
+          data-i18n-attr="aria-label:pauseMotion"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
             <path class="motion-icon-pause" d="M8 5v14M16 5v14" />
             <path class="motion-icon-play" d="m9 5 10 7-10 7V5Z" />
           </svg>
-          <span class="sr-only" id="motion-toggle-label">Pause motion</span>
-          <span class="control-label">Motion</span>
+          <span class="sr-only" id="motion-toggle-label" data-i18n="pauseMotion">Pause motion</span>
+          <span class="control-label" data-i18n="motion">Motion</span>
         </button>
         <button
           class="peer-button"
@@ -92,8 +94,8 @@
           aria-haspopup="dialog"
           aria-label="Open peer explorer, 0 connected peers"
         >
-          <span class="peer-button__label peer-button__label--long">Open peer explorer</span>
-          <span class="peer-button__label peer-button__label--short">Peers</span>
+          <span class="peer-button__label peer-button__label--long" data-i18n="peerExplorer">Open peer explorer</span>
+          <span class="peer-button__label peer-button__label--short" data-i18n="peerExplorerShort">Peers</span>
           <strong id="header-peer-count">0</strong>
         </button>
       </div>
@@ -105,10 +107,11 @@
           id="universe-canvas"
           role="application"
           aria-roledescription="interactive 3D peer observatory"
+          data-i18n-attr="aria-roledescription:interactiveObservatory,aria-label:canvasLabel"
           tabindex="0"
           aria-label="Live 3D IPFS peer universe"
-          aria-describedby="scene-description scene-controls"
-          aria-keyshortcuts="W A S D ArrowLeft ArrowRight ArrowUp ArrowDown PageUp PageDown [ ] Enter Space Escape"
+          aria-describedby="scene-description"
+          aria-keyshortcuts="W A S D ArrowLeft ArrowRight ArrowUp ArrowDown PageUp PageDown + - Home 0 R [ ] Enter Space Escape"
         >
           Your browser cannot draw the 3D scene. The peer explorer remains available.
         </canvas>
@@ -116,7 +119,7 @@
         <div class="aurora" aria-hidden="true"></div>
         <div class="scene-vignette" aria-hidden="true"></div>
 
-        <aside
+          <div
           class="node-tooltip"
           id="node-tooltip"
           role="status"
@@ -130,61 +133,40 @@
             <span class="node-tooltip__state" id="node-tip-state">Connected</span>
           </div>
           <dl>
-            <div><dt>Latency</dt><dd id="node-tip-latency">unmeasured</dd></div>
-            <div><dt>Transport</dt><dd id="node-tip-transport">not observed</dd></div>
-            <div><dt>Direction</dt><dd id="node-tip-direction">not observed</dd></div>
-            <div><dt>Protocols</dt><dd id="node-tip-protocols">not observed</dd></div>
-            <div><dt>Agent</dt><dd id="node-tip-agent">not observed</dd></div>
-            <div><dt>Protocol</dt><dd id="node-tip-protocol-version">not observed</dd></div>
-            <div><dt>Addresses</dt><dd id="node-tip-addresses">not observed</dd></div>
-            <div><dt>Relay</dt><dd id="node-tip-relay">not observed</dd></div>
-            <div><dt>Source</dt><dd id="node-tip-source">browser Helia</dd></div>
+            <div><dt data-i18n="latency">Latency</dt><dd id="node-tip-latency">unmeasured</dd></div>
+            <div><dt data-i18n="transport">Transport</dt><dd id="node-tip-transport">not observed</dd></div>
+            <div><dt data-i18n="direction">Direction</dt><dd id="node-tip-direction">not observed</dd></div>
+            <div><dt data-i18n="protocols">Protocols</dt><dd id="node-tip-protocols">not observed</dd></div>
+            <div><dt data-i18n="agent">Agent</dt><dd id="node-tip-agent">not observed</dd></div>
+            <div><dt data-i18n="protocolVersion">Protocol</dt><dd id="node-tip-protocol-version">not observed</dd></div>
+            <div><dt data-i18n="addresses">Addresses</dt><dd id="node-tip-addresses">not observed</dd></div>
+            <div><dt data-i18n="relay">Relay</dt><dd id="node-tip-relay">not observed</dd></div>
+            <div><dt data-i18n="source">Source</dt><dd id="node-tip-source">browser Helia</dd></div>
           </dl>
-          <span class="node-tooltip__hint">Tap / click or [ ] to select · Esc to dismiss</span>
-        </aside>
+          <span class="node-tooltip__hint" data-i18n="tooltipHint">Tap / click or [ ] to select · Esc to dismiss</span>
+          </div>
 
         <section
           class="scene-fallback"
           id="scene-fallback"
           aria-labelledby="scene-fallback-title"
-          aria-hidden="true"
           hidden
         >
           <span class="scene-fallback__orbit" aria-hidden="true"></span>
-          <p class="eyebrow">Text observatory online</p>
-          <h2 id="scene-fallback-title">3D view unavailable</h2>
-          <p>
+          <p class="eyebrow" data-i18n="fallbackEyebrow">Text observatory online</p>
+          <h2 id="scene-fallback-title" data-i18n="fallbackTitle">3D view unavailable</h2>
+          <p data-i18n="fallbackBody">
             This device could not create a secure WebGL context. Live Helia observations
             remain available through the peer explorer.
           </p>
         </section>
 
-        <ul class="scene-legend" aria-label="3D scene legend">
-          <li><i class="legend-dot legend-dot--connected" aria-hidden="true"></i>Browser live · line to center</li>
-          <li><i class="legend-dot legend-dot--discovered" aria-hidden="true"></i>Discovered only</li>
-          <li><i class="legend-dot legend-dot--kubo" aria-hidden="true"></i>Local Kubo observed · outer field</li>
-          <li><i class="legend-dot legend-dot--dust" aria-hidden="true"></i>Decorative signal dust</li>
-          <li class="scene-legend__axis">Distance = measured latency · outer orbit = unmeasured</li>
-          <li class="scene-legend__axis scene-legend__detail">Angle sectors = WebSocket · WebRTC · WebTransport · Relay · Other</li>
-          <li class="scene-legend__axis scene-legend__detail">Connection line brightness = faster measured response</li>
-        </ul>
-
         <div class="hero-copy">
-          <p class="eyebrow"><span class="signal-dot" aria-hidden="true"></span>Live browser observatory</p>
-          <h1 id="universe-title">Live browser observatory · a living sky for reachable peers</h1>
-          <p class="hero-copy__body">
-            This browser observes reachable peers, measures their responses, and renders
-            only evidence from this session. Nothing here is simulated.
+          <p class="eyebrow"><span class="signal-dot" aria-hidden="true"></span><span data-i18n="liveObservatory">Live browser observatory</span></p>
+          <h1 id="universe-title" data-i18n="heroTitle">Live browser observatory · a living sky for reachable peers</h1>
+          <p class="hero-copy__body" data-i18n="heroBody">
+            This browser observes reachable peers, measures their responses, and renders only evidence from this session. Nothing here is simulated.
           </p>
-        </div>
-
-        <div class="node-status" role="group" aria-label="Browser node status">
-          <span class="node-status__beacon" data-tone="loading" aria-hidden="true"></span>
-          <span class="node-status__copy">
-            <span class="node-status__label">Browser node</span>
-            <strong id="network-status">Opening a browser node…</strong>
-            <code id="local-peer-id">Identity pending</code>
-          </span>
         </div>
 
         <span
@@ -192,125 +174,183 @@
           id="kubo-status"
           role="status"
           aria-atomic="true"
+          aria-hidden="true"
           data-visible="false"
-        >Browser Helia is the default source.</span>
+        data-i18n="kuboDefaultSource">Browser Helia is the default source.</span>
 
-        <p class="scene-guide" id="scene-controls">
-          <span class="scene-guide__desktop">WASD / arrows · left drag or right click camera · hover for details</span>
-          <span class="scene-guide__mobile">Swipe · pinch · tap to pin</span>
-        </p>
+        <details class="observatory-key" id="observatory-key">
+          <summary class="observatory-key__summary" data-i18n="sceneLegend">3D scene guide</summary>
+          <ul class="scene-legend" aria-label="3D scene legend" data-i18n-attr="aria-label:sceneLegend">
+            <li><i class="legend-dot legend-dot--connected" aria-hidden="true"></i><span data-i18n="browserLiveLine">Browser live · line to center</span></li>
+            <li><i class="legend-dot legend-dot--discovered" aria-hidden="true"></i><span data-i18n="discoveredOnly">Discovered only</span></li>
+            <li><i class="legend-dot legend-dot--kubo" aria-hidden="true"></i><span data-i18n="kuboObservedOuter">Local Kubo observed · outer field</span></li>
+            <li><i class="legend-dot legend-dot--disconnected" aria-hidden="true"></i><span data-i18n="disconnectedHistory">Disconnected history · dead star</span></li>
+            <li><i class="legend-dot legend-dot--dust" aria-hidden="true"></i><span data-i18n="decorativeDust">Decorative signal dust</span></li>
+            <li class="scene-legend__axis" data-i18n="distanceAxis">Distance = measured latency · outer orbit = unmeasured</li>
+            <li class="scene-legend__axis scene-legend__detail" data-i18n="angleAxis">Angle sectors = WebSocket · WebRTC · WebTransport · Relay · Other</li>
+            <li class="scene-legend__axis scene-legend__detail" data-i18n="brightnessAxis">Connection line brightness = faster measured response</li>
+          </ul>
 
-        <div class="metric-deck" role="group" aria-label="Live observation metrics">
-          <dl class="metric">
-            <dt>Connected now <span>Browser live</span></dt>
-            <dd data-tone="empty"><strong id="metric-connected">0</strong><small>Current browser Helia connections</small></dd>
-          </dl>
-          <dl class="metric">
-            <dt>Tracked view <span>All sources</span></dt>
-            <dd><strong id="metric-observed">0</strong><small>Recent peers · maximum 2,048</small></dd>
-          </dl>
-          <dl class="metric">
-            <dt>Median latency <span>Measured</span></dt>
-            <dd><strong id="metric-latency">—</strong><small id="metric-latency-samples">0 / 0 live pings</small></dd>
-          </dl>
-          <dl class="metric">
-            <dt>P95 latency <span>Measured</span></dt>
-            <dd><strong id="metric-p95">—</strong><small>Tail of the same live sample</small></dd>
-          </dl>
-        </div>
+          <div class="node-status" role="group" aria-label="Browser node status" data-i18n-attr="aria-label:browserNodeStatus">
+            <span class="node-status__beacon" data-tone="loading" aria-hidden="true"></span>
+            <span class="node-status__copy">
+              <span class="node-status__label" data-i18n="browserNode">Browser node</span>
+              <strong id="network-status" data-i18n="openingNode">Opening a browser node…</strong>
+              <code id="local-peer-id" data-i18n="identityPending">Identity pending</code>
+            </span>
+          </div>
 
-        <p class="scope-note">
-          <strong>Observation scope</strong>
-          This browser’s reachable neighborhood plus explicitly imported local Kubo observations; tracked at 2,048 and rendered at 1,024, never the entire IPFS network.
-        </p>
+          <div class="metric-deck" role="group" aria-label="Live observation metrics" data-i18n-attr="aria-label:liveObservationMetrics">
+            <dl class="metric">
+              <dt><span data-i18n="connectedNow">Connected now</span> <span data-i18n="browserLive">Browser live</span></dt>
+              <dd data-tone="empty"><strong id="metric-connected">0</strong><small data-i18n="currentBrowserConnections">Current browser Helia connections</small></dd>
+            </dl>
+            <dl class="metric">
+              <dt><span data-i18n="trackedView">Tracked view</span> <span data-i18n="allSources">All sources</span></dt>
+              <dd><strong id="metric-observed">0</strong><small data-i18n="recentPeers">Recent peers · maximum 2,048</small></dd>
+            </dl>
+            <dl class="metric">
+              <dt><span data-i18n="medianLatency">Median latency</span> <span data-i18n="measured">Measured</span></dt>
+              <dd><strong id="metric-latency">—</strong><small id="metric-latency-samples" data-i18n="latencySampleEmpty">0 / 0 live pings</small></dd>
+            </dl>
+            <dl class="metric">
+              <dt><span data-i18n="p95Latency">P95 latency</span> <span data-i18n="measured">Measured</span></dt>
+              <dd><strong id="metric-p95">—</strong><small data-i18n="tailOfSample">Tail of the same live sample</small></dd>
+            </dl>
+          </div>
 
-        <p class="sr-only" id="scene-description">
+          <p class="scope-note">
+            <strong data-i18n="observationScope">Observation scope</strong>
+            <span data-i18n="observationScopeBody">This browser’s reachable neighborhood plus explicitly imported local Kubo observations; tracked at 2,048 and rendered at 1,024, never the entire IPFS network.</span>
+          </p>
+        </details>
+
+        <p class="sr-only" id="scene-description" data-i18n="sceneDescription">
           The center represents this browser’s Helia node. Bright green nodes are currently
           connected to the browser and have a line to the center. Violet nodes were discovered by
-          browser routing but are not connected. Neutral slate nodes are open connections reported
-          by the separate local Kubo daemon; they are not browser connections and have no line to
-          this center. Distance from the center maps measured latency; unmeasured peers occupy the
-          outer orbit, and angle groups the observed transport. Decorative background stars do not
-          represent peers. The faint outer orbit marks the imported Kubo field and is not a
-          connection. A relay edge appears only when the relay ID is present in the observed
-          peer set; arbitrary peer-to-peer topology is never inferred. Use the peer explorer for the
-          same information in text form.
+          browser routing but are not connected. Gold nodes are open connections reported by the
+          separate local Kubo daemon; they are not browser connections and have no line to this
+          center. Slate dead stars preserve disconnected history, and their evidence line is
+          removed only after disconnect. Distance from the center maps measured latency; unmeasured
+          peers occupy the outer orbit, and angle groups the observed transport. Decorative
+          background stars do not represent peers. The faint outer orbit marks the imported Kubo
+          field and is not a connection. A relay edge appears only when the relay ID is present in
+          the observed peer set; arbitrary peer-to-peer topology is never inferred. Use the peer
+          explorer for the same information in text form.
         </p>
       </section>
     </main>
 
     <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
       <div class="settings-dialog__surface">
-        <header class="settings-dialog__header" aria-label="Settings controls">
+        <header class="settings-dialog__header" aria-label="Settings controls" data-i18n-attr="aria-label:settingsControls">
           <div>
-            <p class="eyebrow">Observatory controls</p>
-            <h2 id="settings-title">Tune the sky</h2>
-            <p id="settings-summary" class="settings-dialog__summary">Auto quality protects the frame rate.</p>
+            <p class="eyebrow" data-i18n="settingsEyebrow">Observatory controls</p>
+            <h2 id="settings-title" data-i18n="settingsTitle">Tune the sky</h2>
+            <p id="settings-summary" class="settings-dialog__summary" data-i18n="settingsSummaryAuto">Auto quality protects the frame rate.</p>
           </div>
-          <button class="dialog-close" id="settings-dialog-close" type="button" aria-label="Close settings">×</button>
+          <button class="dialog-close" id="settings-dialog-close" type="button" aria-label="Close settings" data-i18n-attr="aria-label:closeSettings">×</button>
         </header>
 
         <form class="settings-form" id="settings-form">
           <fieldset>
-            <legend>Quick presets</legend>
+            <legend data-i18n="quickPresets">Quick presets</legend>
             <label class="settings-field settings-field--wide">
-              <span>Preset</span>
+              <span data-i18n="preset">Preset</span>
               <select id="settings-preset" data-setting="preset">
-                <option value="auto">自動 — device-aware</option>
-                <option value="lowest">最低 — battery first</option>
-                <option value="low">低 — light scene</option>
-                <option value="medium">中 — balanced</option>
-                <option value="high">高 — rich sky</option>
-                <option value="highest">最高 — force detail</option>
+                <option value="auto" data-i18n="presetAuto">Auto — device-aware</option>
+                <option value="lowest" data-i18n="presetLowest">Lowest — battery first</option>
+                <option value="low" data-i18n="presetLow">Low — light scene</option>
+                <option value="medium" data-i18n="presetMedium">Medium — balanced</option>
+                <option value="high" data-i18n="presetHigh">High — rich sky</option>
+                <option value="highest" data-i18n="presetHighest">Highest — force detail</option>
               </select>
             </label>
             <label class="settings-field settings-field--wide">
-              <span>Adaptive protection</span>
+              <span data-i18n="adaptiveProtection">Adaptive protection</span>
               <select id="settings-quality-mode" data-setting="qualityMode">
-                <option value="auto">Auto — recover and adapt</option>
-                <option value="manual">Manual — never change preset</option>
+                <option value="auto" data-i18n="adaptiveAuto">Auto — recover and adapt</option>
+                <option value="manual" data-i18n="adaptiveManual">Manual — never change preset</option>
               </select>
             </label>
           </fieldset>
 
           <fieldset>
-            <legend>Rendering</legend>
-            <div class="settings-field"><div class="settings-field__label"><label for="settings-pixel-ratio">Pixel ratio</label><output id="settings-pixel-ratio-value">1.00×</output></div><input id="settings-pixel-ratio" data-setting="pixelRatio" type="range" min="0.55" max="1.5" step="0.05" value="1"></div>
-            <div class="settings-field"><div class="settings-field__label"><label for="settings-nebula-density">Nebula density</label><output id="settings-nebula-density-value">100%</output></div><input id="settings-nebula-density" data-setting="nebulaDensity" type="range" min="0" max="1" step="0.05" value="1"></div>
-            <div class="settings-field"><div class="settings-field__label"><label for="settings-dust-density">Signal dust</label><output id="settings-dust-density-value">100%</output></div><input id="settings-dust-density" data-setting="dustDensity" type="range" min="0" max="1" step="0.05" value="1"></div>
-            <div class="settings-field"><div class="settings-field__label"><label for="settings-node-lod">Node detail</label><output id="settings-node-lod-value">100%</output></div><input id="settings-node-lod" data-setting="nodeLod" type="range" min="0" max="1" step="0.05" value="1"></div>
-            <div class="settings-field"><div class="settings-field__label"><label for="settings-edge-brightness">Edge brightness</label><output id="settings-edge-brightness-value">100%</output></div><input id="settings-edge-brightness" data-setting="edgeBrightness" type="range" min="0.25" max="1.5" step="0.05" value="1"></div>
-            <label class="settings-check"><input id="settings-antialiasing" data-setting="antialiasing" type="checkbox" checked><span>Antialiasing (next visit)</span></label>
+            <legend data-i18n="rendering">Rendering</legend>
+            <div class="settings-field"><div class="settings-field__label"><label for="settings-pixel-ratio" data-i18n="pixelRatio">Pixel ratio</label><output id="settings-pixel-ratio-value">1.00×</output></div><input id="settings-pixel-ratio" data-setting="pixelRatio" type="range" min="0.55" max="1.5" step="0.05" value="1"></div>
+            <div class="settings-field"><div class="settings-field__label"><label for="settings-nebula-density" data-i18n="nebulaDensity">Nebula density</label><output id="settings-nebula-density-value">100%</output></div><input id="settings-nebula-density" data-setting="nebulaDensity" type="range" min="0" max="1" step="0.05" value="1"></div>
+            <div class="settings-field"><div class="settings-field__label"><label for="settings-dust-density" data-i18n="signalDust">Signal dust</label><output id="settings-dust-density-value">100%</output></div><input id="settings-dust-density" data-setting="dustDensity" type="range" min="0" max="1" step="0.05" value="1"></div>
+            <div class="settings-field"><div class="settings-field__label"><label for="settings-node-lod" data-i18n="nodeDetail">Node detail</label><output id="settings-node-lod-value">100%</output></div><input id="settings-node-lod" data-setting="nodeLod" type="range" min="0" max="1" step="0.05" value="1"></div>
+            <div class="settings-field"><div class="settings-field__label"><label for="settings-edge-brightness" data-i18n="edgeBrightness">Edge brightness</label><output id="settings-edge-brightness-value">100%</output></div><input id="settings-edge-brightness" data-setting="edgeBrightness" type="range" min="0.25" max="1.5" step="0.05" value="1"></div>
+            <label class="settings-check"><input id="settings-antialiasing" data-setting="antialiasing" type="checkbox" checked><span data-i18n="antialiasingNextVisit">Antialiasing (next visit)</span></label>
           </fieldset>
 
           <fieldset>
-            <legend>Atmosphere and motion</legend>
-            <label class="settings-field settings-field--wide"><span>Space panorama</span><select id="settings-skybox" data-setting="skyboxMode"><option value="space-2k">Space 2K — fast load</option><option value="space-8k">Space 8K — maximum detail</option><option value="off">CSS sky — no panorama</option></select></label>
-            <div class="settings-field"><div class="settings-field__label"><label for="settings-exposure">Exposure</label><output id="settings-exposure-value">1.05</output></div><input id="settings-exposure" data-setting="exposure" type="range" min="0.5" max="1.8" step="0.05" value="1.05"></div>
-            <div class="settings-field"><div class="settings-field__label"><label for="settings-fog-density">Depth fog</label><output id="settings-fog-density-value">0.0035</output></div><input id="settings-fog-density" data-setting="fogDensity" type="range" min="0" max="0.02" step="0.0005" value="0.0035"></div>
-            <div class="settings-field"><div class="settings-field__label"><label for="settings-motion-scale">Motion scale</label><output id="settings-motion-scale-value">100%</output></div><input id="settings-motion-scale" data-setting="motionScale" type="range" min="0" max="1.5" step="0.05" value="1"></div>
-            <div class="settings-field"><div class="settings-field__label"><label for="settings-camera-sensitivity">Camera sensitivity</label><output id="settings-camera-sensitivity-value">100%</output></div><input id="settings-camera-sensitivity" data-setting="cameraSensitivity" type="range" min="0.25" max="2" step="0.05" value="1"></div>
-            <label class="settings-check"><input id="settings-auto-orbit" data-setting="autoOrbit" type="checkbox" checked><span>Automatic orbit</span></label>
-            <label class="settings-check"><input id="settings-pulse" data-setting="pulse" type="checkbox" checked><span>Arrival pulses</span></label>
+            <legend data-i18n="atmosphereMotion">Atmosphere and motion</legend>
+            <label class="settings-field settings-field--wide"><span data-i18n="spacePanorama">Space panorama</span><select id="settings-skybox" data-setting="skyboxMode"><option value="space-2k" data-i18n="space2k">Space 2K — fast load</option><option value="space-8k" data-i18n="space8k">Space 8K — maximum detail</option><option value="off" data-i18n="cssSky">CSS sky — no panorama</option></select></label>
+            <div class="settings-field"><div class="settings-field__label"><label for="settings-exposure" data-i18n="exposure">Exposure</label><output id="settings-exposure-value">1.05</output></div><input id="settings-exposure" data-setting="exposure" type="range" min="0.5" max="1.8" step="0.05" value="1.05"></div>
+            <div class="settings-field"><div class="settings-field__label"><label for="settings-fog-density" data-i18n="depthFog">Depth fog</label><output id="settings-fog-density-value">0.0035</output></div><input id="settings-fog-density" data-setting="fogDensity" type="range" min="0" max="0.02" step="0.0005" value="0.0035"></div>
+            <div class="settings-field"><div class="settings-field__label"><label for="settings-motion-scale" data-i18n="motionScale">Motion scale</label><output id="settings-motion-scale-value">100%</output></div><input id="settings-motion-scale" data-setting="motionScale" type="range" min="0" max="1.5" step="0.05" value="1"></div>
+            <div class="settings-field"><div class="settings-field__label"><label for="settings-camera-sensitivity" data-i18n="cameraSensitivity">Camera sensitivity</label><output id="settings-camera-sensitivity-value">100%</output></div><input id="settings-camera-sensitivity" data-setting="cameraSensitivity" type="range" min="0.25" max="2" step="0.05" value="1"></div>
+            <label class="settings-check"><input id="settings-auto-orbit" data-setting="autoOrbit" type="checkbox" checked><span data-i18n="automaticOrbit">Automatic orbit</span></label>
+            <label class="settings-check"><input id="settings-pulse" data-setting="pulse" type="checkbox" checked><span data-i18n="arrivalPulses">Arrival pulses</span></label>
           </fieldset>
 
           <fieldset>
-            <legend>Data layers</legend>
-            <label class="settings-check"><input id="settings-show-kubo" data-setting="showKubo" type="checkbox" checked><span>Local Kubo observations</span></label>
-            <label class="settings-check"><input id="settings-show-discovered" data-setting="showDiscovered" type="checkbox" checked><span>Discovered peers</span></label>
-            <label class="settings-check"><input id="settings-show-latency" data-setting="showLatencyRings" type="checkbox" checked><span>Latency distance rings</span></label>
+            <legend data-i18n="dataLayers">Data layers</legend>
+            <label class="settings-check"><input id="settings-show-kubo" data-setting="showKubo" type="checkbox" checked><span data-i18n="localKuboObservations">Local Kubo observations</span></label>
+            <label class="settings-check"><input id="settings-show-discovered" data-setting="showDiscovered" type="checkbox" checked><span data-i18n="discoveredPeers">Discovered peers</span></label>
+            <label class="settings-check"><input id="settings-show-latency" data-setting="showLatencyRings" type="checkbox" checked><span data-i18n="latencyDistanceRings">Latency distance rings</span></label>
+          </fieldset>
+
+          <fieldset>
+            <legend data-i18n="languageRegion">Language and region</legend>
+            <label class="settings-field settings-field--wide"><span data-i18n="language">Language</span><select id="settings-language" data-setting="language"><option value="auto" data-i18n="languageAuto">Auto — browser preference</option><option value="en">English</option><option value="ja">日本語</option><option value="zh-CN">简体中文</option><option value="ko">한국어</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option></select></label>
+            <label class="settings-field settings-field--wide"><span data-i18n="region">Region hint</span><select id="settings-region-mode" data-setting="regionMode"><option value="auto" data-i18n="regionAuto">Auto — language and time zone only</option><option value="off" data-i18n="regionOff">Off — do not infer a region</option></select></label>
+            <p class="settings-region" id="detected-region" data-i18n="regionChecking">Region hint: checking language and time zone…</p>
+            <details class="language-coverage">
+              <summary data-i18n="languageCoverage">Language coverage</summary>
+              <p id="language-coverage-summary" data-i18n="checkingLanguageCoverage">Loading language catalog…</p>
+              <ul id="language-coverage-list" aria-busy="true"></ul>
+            </details>
+          </fieldset>
+
+          <fieldset class="settings-controls">
+            <legend data-i18n="settingsControls">Controls</legend>
+            <label class="settings-field settings-field--wide"><span data-i18n="pointerBehavior">Pointer behavior</span><select id="settings-pointer-mode" data-setting="pointerMode"><option value="hover" data-i18n="pointerHover">Hover peers for details</option><option value="camera" data-i18n="pointerCamera">Camera mode until toggled</option></select></label>
+            <div class="settings-bindings">
+              <label><span data-i18n="moveForward">Move forward</span><input id="settings-control-move-forward" name="control-moveForward" data-control="moveForward" type="text" readonly value="W" aria-label="Move forward key" data-i18n-attr="aria-label:moveForward"></label>
+              <label><span data-i18n="moveBackward">Move backward</span><input id="settings-control-move-backward" name="control-moveBackward" data-control="moveBackward" type="text" readonly value="S" aria-label="Move backward key" data-i18n-attr="aria-label:moveBackward"></label>
+              <label><span data-i18n="strafeLeft">Strafe left</span><input id="settings-control-strafe-left" name="control-strafeLeft" data-control="strafeLeft" type="text" readonly value="A" aria-label="Strafe left key" data-i18n-attr="aria-label:strafeLeft"></label>
+              <label><span data-i18n="strafeRight">Strafe right</span><input id="settings-control-strafe-right" name="control-strafeRight" data-control="strafeRight" type="text" readonly value="D" aria-label="Strafe right key" data-i18n-attr="aria-label:strafeRight"></label>
+              <label><span data-i18n="turnLeft">Turn left</span><input id="settings-control-turn-left" name="control-turnLeft" data-control="turnLeft" type="text" readonly value="←" aria-label="Turn left key" data-i18n-attr="aria-label:turnLeft"></label>
+              <label><span data-i18n="turnRight">Turn right</span><input id="settings-control-turn-right" name="control-turnRight" data-control="turnRight" type="text" readonly value="→" aria-label="Turn right key" data-i18n-attr="aria-label:turnRight"></label>
+              <label><span data-i18n="lookUp">Look up</span><input id="settings-control-look-up" name="control-lookUp" data-control="lookUp" type="text" readonly value="↑" aria-label="Look up key" data-i18n-attr="aria-label:lookUp"></label>
+              <label><span data-i18n="lookDown">Look down</span><input id="settings-control-look-down" name="control-lookDown" data-control="lookDown" type="text" readonly value="↓" aria-label="Look down key" data-i18n-attr="aria-label:lookDown"></label>
+              <label><span data-i18n="zoomIn">Zoom in</span><input id="settings-control-zoom-in" name="control-zoomIn" data-control="zoomIn" type="text" readonly value="+" aria-label="Zoom in key" data-i18n-attr="aria-label:zoomIn"></label>
+              <label><span data-i18n="zoomOut">Zoom out</span><input id="settings-control-zoom-out" name="control-zoomOut" data-control="zoomOut" type="text" readonly value="−" aria-label="Zoom out key" data-i18n-attr="aria-label:zoomOut"></label>
+              <label><span data-i18n="speedBoost">Speed boost</span><input id="settings-control-boost" name="control-boost" data-control="boost" type="text" readonly value="Shift" aria-label="Speed boost key" data-i18n-attr="aria-label:speedBoost"></label>
+            </div>
+            <p class="settings-region" data-i18n="controlsBindingHint">Focus a binding, then press any keyboard key to replace it. Bindings are stored on this device only.</p>
+            <ul>
+              <li data-i18n="controlsForward"><kbd>WASD</kbd> or <kbd>Arrow keys</kbd> travel and rotate the camera.</li>
+              <li data-i18n="controlsOrbit">Hold left drag, or switch to right-click camera mode, to orbit.</li>
+              <li data-i18n="controlsHover">Hover a peer for details; tap or click to pin its evidence card.</li>
+              <li data-i18n="controlsSelect"><kbd>[</kbd> / <kbd>]</kbd> select peers, <kbd>Enter</kbd> pins, <kbd>Esc</kbd> dismisses.</li>
+              <li data-i18n="controlsTouch">On touch screens, swipe to orbit, pinch to travel, and tap to pin.</li>
+            </ul>
           </fieldset>
 
           <details class="settings-credits">
-            <summary>Credits and licenses</summary>
-            <p>Peerstellation code and original scene design © tadanobutubutu, MIT.</p>
-            <p id="skybox-credit">Night Sky HDRI 008 — Lennart Demes / ambientCG · CC0 1.0 Universal. Source and full checksum: docs/assets.md.</p>
-            <p><a href="https://www.spitzer.caltech.edu/explore/glimpse360" target="_blank" rel="noreferrer">NASA/JPL-Caltech GLIMPSE360 source page</a></p>
+            <summary data-i18n="creditsSummary">Credits and licenses</summary>
+            <p data-i18n="creditsCode">Peerstellation code and original scene design © tadanobutubutu, MIT.</p>
+            <p id="skybox-credit" data-i18n="skyboxCreditEnabled">Night Sky HDRI 008 — Lennart Demes / ambientCG · CC0 1.0 Universal. Full source, conversion details, and SHA-256 are recorded in docs/assets.md.</p>
+            <p><a href="https://www.spitzer.caltech.edu/explore/glimpse360" target="_blank" rel="noreferrer" data-i18n="creditsNasaLink">NASA/JPL-Caltech GLIMPSE360 source page</a></p>
           </details>
 
           <div class="settings-dialog__actions">
-            <button class="text-button" id="settings-reset" type="button">Reset defaults</button>
-            <button class="peer-button" id="settings-done" type="submit">Apply and close</button>
+            <button class="text-button" id="settings-reset" type="button" data-i18n="settingsReset">Reset defaults</button>
+            <button class="peer-button" id="settings-done" type="submit" data-i18n="applyClose">Apply and close</button>
           </div>
         </form>
       </div>
@@ -320,50 +360,50 @@
       <div class="peer-dialog__surface">
         <div class="peer-dialog__header">
           <div>
-            <p class="eyebrow">Observable neighborhood</p>
-            <h2 id="peer-dialog-title">Peer explorer</h2>
+            <p class="eyebrow" data-i18n="observableNeighborhood">Observable neighborhood</p>
+            <h2 id="peer-dialog-title" data-i18n="peerExplorerTitle">Peer explorer</h2>
           </div>
-          <button class="dialog-close" id="peer-dialog-close" type="button" aria-label="Close peer explorer">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <button class="dialog-close" id="peer-dialog-close" type="button" aria-label="Close peer explorer" data-i18n-attr="aria-label:closePeerExplorer">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="m6 6 12 12M18 6 6 18" />
             </svg>
           </button>
         </div>
-        <p class="peer-dialog__summary" id="peer-summary">
+        <p class="peer-dialog__summary" id="peer-summary" data-i18n="peerSummaryInitial">
           Waiting for the browser node to report peers.
         </p>
-        <div class="peer-legend" role="group" aria-label="Peer state legend">
-          <span><i class="legend-dot legend-dot--connected" aria-hidden="true"></i>Browser live</span>
-          <span><i class="legend-dot legend-dot--kubo" aria-hidden="true"></i>Local Kubo observed</span>
-          <span><i class="legend-dot legend-dot--discovered" aria-hidden="true"></i>Discovered</span>
-          <span><i class="legend-dot legend-dot--disconnected" aria-hidden="true"></i>Disconnected</span>
+        <div class="peer-legend" role="group" aria-label="Peer state legend" data-i18n-attr="aria-label:peerStateLegend">
+          <span><i class="legend-dot legend-dot--connected" aria-hidden="true"></i><span data-i18n="browserLive">Browser live</span></span>
+          <span><i class="legend-dot legend-dot--kubo" aria-hidden="true"></i><span data-i18n="localKuboObservations">Local Kubo observed</span></span>
+          <span><i class="legend-dot legend-dot--discovered" aria-hidden="true"></i><span data-i18n="discovered">Discovered</span></span>
+          <span><i class="legend-dot legend-dot--disconnected" aria-hidden="true"></i><span data-i18n="disconnected">Disconnected</span></span>
         </div>
         <div class="peer-tools">
           <label>
-            <span>Find peer</span>
-            <input id="peer-search" type="search" autocomplete="off" spellcheck="false" placeholder="Peer ID">
+            <span data-i18n="findPeer">Find peer</span>
+            <input id="peer-search" type="search" autocomplete="off" spellcheck="false" placeholder="Peer ID" data-i18n-attr="placeholder:peerIdPlaceholder">
           </label>
           <label>
-            <span>State</span>
-            <select id="peer-filter" aria-label="Filter peers by state">
-              <optgroup label="Peer state">
-                <option value="all">All states</option>
-                <option value="connected">Connected</option>
-                <option value="discovered">Discovered</option>
-                <option value="disconnected">Disconnected</option>
+            <span data-i18n="state">State</span>
+            <select id="peer-filter" aria-label="Filter peers by state" data-i18n-attr="aria-label:state">
+              <optgroup label="Peer state" data-i18n-attr="label:peerStateLegend">
+                <option value="all" data-i18n="allStates">All states</option>
+                <option value="connected" data-i18n="connected">Connected</option>
+                <option value="discovered" data-i18n="discovered">Discovered</option>
+                <option value="disconnected" data-i18n="disconnected">Disconnected</option>
               </optgroup>
             </select>
           </label>
-          <output id="peer-result-count" for="peer-search peer-filter">0 shown</output>
+          <output id="peer-result-count" for="peer-search peer-filter" data-i18n="peerResultsInitial">0 shown</output>
         </div>
-        <ol class="peer-list" id="peer-list" aria-label="Observed IPFS peers"></ol>
+        <ol class="peer-list" id="peer-list" aria-busy="true" aria-label="Observed IPFS peers" data-i18n-attr="aria-label:observedPeers"></ol>
         <p class="peer-empty" id="peer-empty">
-          No peers have been observed yet. Browser discovery can take a moment; local Kubo peers
-          appear after an explicit RPC probe with CORS enabled.
+          <span data-i18n="noPeers">No peers have been observed yet. Browser discovery can take a moment; local Kubo peers
+          appear after an explicit RPC probe with CORS enabled.</span>
         </p>
         <div class="local-history">
-          <p><strong>On-device history</strong><span id="history-count">Checking previous visits…</span></p>
-          <button class="text-button" id="history-clear" type="button">Clear local history</button>
+          <p><strong data-i18n="onDeviceHistory">On-device history</strong><span id="history-count" data-i18n="checkingVisits">Checking previous visits…</span></p>
+          <button class="text-button" id="history-clear" type="button" data-i18n="clearHistory">Clear local history</button>
         </div>
       </div>
     </dialog>

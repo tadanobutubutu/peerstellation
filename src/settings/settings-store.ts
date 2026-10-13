@@ -1,9 +1,14 @@
+import { parseSettingsState } from '../contracts/peer-schema';
 import {
+  DEFAULT_CONTROL_BINDINGS,
   DEFAULT_SETTINGS,
   PRESET_SETTINGS,
   SETTINGS_STORAGE_KEY,
 } from './settings-defaults';
 import {
+  CONTROL_ACTIONS,
+  isBindableControlCode,
+  LOCALES,
   QUALITY_PRESETS,
   type QualityPreset,
   type SettingsListener,
@@ -44,7 +49,14 @@ export class SettingsStore {
   }
 
   update(patch: SettingsPatch): SettingsState {
-    this.#settings = sanitizeSettings({ ...this.#settings, ...patch });
+    this.#settings = sanitizeSettings({
+      ...this.#settings,
+      ...patch,
+      controls:
+        patch.controls === undefined
+          ? this.#settings.controls
+          : { ...this.#settings.controls, ...patch.controls },
+    });
     this.#persist();
     this.#notify();
     return this.#settings;
@@ -53,7 +65,23 @@ export class SettingsStore {
   applyPreset(preset: QualityPreset): SettingsState {
     if (preset === 'auto') {
       return this.update({
-        ...DEFAULT_SETTINGS,
+        pixelRatio: DEFAULT_SETTINGS.pixelRatio,
+        antialiasing: DEFAULT_SETTINGS.antialiasing,
+        nebulaDensity: DEFAULT_SETTINGS.nebulaDensity,
+        dustDensity: DEFAULT_SETTINGS.dustDensity,
+        nodeLod: DEFAULT_SETTINGS.nodeLod,
+        edgeBrightness: DEFAULT_SETTINGS.edgeBrightness,
+        skyboxMode: DEFAULT_SETTINGS.skyboxMode,
+        exposure: DEFAULT_SETTINGS.exposure,
+        fogDensity: DEFAULT_SETTINGS.fogDensity,
+        autoOrbit: DEFAULT_SETTINGS.autoOrbit,
+        pulse: DEFAULT_SETTINGS.pulse,
+        motionScale: DEFAULT_SETTINGS.motionScale,
+        cameraSensitivity: DEFAULT_SETTINGS.cameraSensitivity,
+        pointerMode: DEFAULT_SETTINGS.pointerMode,
+        showKubo: DEFAULT_SETTINGS.showKubo,
+        showDiscovered: DEFAULT_SETTINGS.showDiscovered,
+        showLatencyRings: DEFAULT_SETTINGS.showLatencyRings,
         preset,
         qualityMode: 'auto',
       });
@@ -101,7 +129,8 @@ export function readSettings(serialized: string | null): SettingsState {
   try {
     const parsed: unknown = JSON.parse(serialized);
     if (!isRecord(parsed) || parsed.version !== 1) return DEFAULT_SETTINGS;
-    return sanitizeSettings({ ...DEFAULT_SETTINGS, ...parsed });
+    const sanitized = sanitizeSettings({ ...DEFAULT_SETTINGS, ...parsed });
+    return parseSettingsState(sanitized) ?? DEFAULT_SETTINGS;
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -124,6 +153,13 @@ export function sanitizeSettings(
     candidate.pointerMode === 'camera'
       ? 'camera'
       : DEFAULT_SETTINGS.pointerMode;
+  const controls = sanitizeControls(candidate.controls);
+  const language = LOCALES.includes(
+    candidate.language as (typeof LOCALES)[number],
+  )
+    ? (candidate.language as (typeof LOCALES)[number])
+    : DEFAULT_SETTINGS.language;
+  const regionMode = candidate.regionMode === 'off' ? 'off' : 'auto';
   return {
     version: 1,
     qualityMode,
@@ -142,10 +178,62 @@ export function sanitizeSettings(
     motionScale: clampNumber(candidate.motionScale, 0, 1.5, 1),
     cameraSensitivity: clampNumber(candidate.cameraSensitivity, 0.25, 2, 1),
     pointerMode,
+    controls,
+    language,
+    regionMode,
     showKubo: booleanOr(candidate.showKubo, true),
     showDiscovered: booleanOr(candidate.showDiscovered, true),
     showLatencyRings: booleanOr(candidate.showLatencyRings, true),
   };
+}
+
+function sanitizeControls(value: unknown): typeof DEFAULT_CONTROL_BINDINGS {
+  const candidate = isRecord(value) ? value : {};
+  const used = new Set<string>();
+  const controls = {} as Record<keyof typeof DEFAULT_CONTROL_BINDINGS, string>;
+  for (const action of CONTROL_ACTIONS) {
+    const requested = candidate[action];
+    const fallback = availableFallback(action, used);
+    const code =
+      isBindableControlCode(requested) && !used.has(requested)
+        ? requested
+        : fallback;
+    controls[action] = code;
+    used.add(code);
+  }
+  return controls;
+}
+
+function availableFallback(
+  action: keyof typeof DEFAULT_CONTROL_BINDINGS,
+  used: ReadonlySet<string>,
+): string {
+  const preferred = DEFAULT_CONTROL_BINDINGS[action];
+  if (!used.has(preferred)) return preferred;
+  // This path is only reachable after a user deliberately assigns another
+  // action to a default key. Pick a deterministic, printable keyboard code so
+  // every action remains reachable instead of silently sharing a control.
+  const spareCodes = [
+    'KeyZ',
+    'KeyX',
+    'KeyC',
+    'KeyV',
+    'KeyB',
+    'KeyN',
+    'KeyM',
+    'Digit1',
+    'Digit2',
+    'Digit3',
+    'Digit4',
+    'Digit5',
+    'Digit6',
+    'Digit7',
+    'Digit8',
+    'Digit9',
+    'Digit0',
+    'F13',
+  ];
+  return spareCodes.find((code) => !used.has(code)) ?? `F${14 + used.size}`;
 }
 
 function clampNumber(

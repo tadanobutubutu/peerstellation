@@ -7,6 +7,7 @@ import {
   fitBoundsRadiusP90,
   fitCompositionRadius,
   fitPerspectiveDistance,
+  manualCameraDistance,
 } from '../src/scene/camera-fit';
 
 describe('perspective observatory framing', () => {
@@ -27,7 +28,7 @@ describe('perspective observatory framing', () => {
     expect(portrait).toBeGreaterThan(landscape);
     expect(portrait).toBeCloseTo(92.61, 1);
     expect(capPortraitDistance(portrait, 0.45)).toBeCloseTo(92.61, 1);
-    expect(capPortraitDistance(240, 0.45)).toBe(145);
+    expect(capPortraitDistance(240, 0.45)).toBe(220);
   });
 
   it('returns a safe finite distance for empty or invalid bounds', () => {
@@ -37,9 +38,17 @@ describe('perspective observatory framing', () => {
   });
 
   it('caps wide-field framing so the observatory core stays prominent', () => {
-    expect(fitPerspectiveDistance(10_000, Math.PI / 4, 1.6, 1.2)).toBe(180);
-    expect(capAutoCameraDistance(180, 1.6)).toBe(150);
-    expect(capAutoCameraDistance(180, 0.45)).toBe(145);
+    expect(fitPerspectiveDistance(300, Math.PI / 4, 1.6, 1.2)).toBeGreaterThan(
+      180,
+    );
+    expect(capAutoCameraDistance(300, 1.6)).toBe(300);
+    expect(capAutoCameraDistance(600, 1.6)).toBe(360);
+    expect(capAutoCameraDistance(600, 0.45)).toBe(220);
+  });
+
+  it('lets manual camera travel keep moving beyond the automatic composition cap', () => {
+    expect(manualCameraDistance(240, 5_000)).toBe(5_240);
+    expect(manualCameraDistance(240, -10_000)).toBe(28);
   });
 
   it('finds the furthest live peer radius without allocating vectors', () => {

@@ -1,12 +1,12 @@
 # ABYSSAL inspired Peerstellation experience Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. This historical plan is superseded by the Rust-only implementation documented in `docs/superpowers/plans/2026-09-11-quality-toolchain-rust-renderer.md`.
 
 **Goal:** Use the reference repository's production rendering ideas without copying its code, and make Peerstellation's real IPFS observatory feel cinematic while remaining evidence-driven, accessible, and fast.
 
-**Architecture:** Keep Three.js as the renderer with WebGPU first and WebGL2 fallback. Keep Rust WASM for peer analytics and Zig WASM for numeric layout/edges; add small pure TypeScript policies for camera framing, quality adaptation, and diagnostics. All visual events are driven by observed peer transitions, never fabricated topology.
+**Architecture:** Keep Three.js as the renderer with WebGPU first and WebGL2 fallback. Keep Rust WASM for peer analytics, numeric layout, and evidence-backed edges; add small pure TypeScript policies for camera framing, quality adaptation, and diagnostics. All visual events are driven by observed peer transitions, never fabricated topology.
 
-**Tech Stack:** TypeScript 7, Three.js 0.185, WebGPU/WebGL2, Rust and Zig WASM, Vitest, Playwright, axe, Pa11y, html-validate, Biome.
+**Tech Stack:** TypeScript 7, Three.js 0.185, WebGPU/WebGL2, Rust WASM, Vitest, Playwright, axe, Pa11y, html-validate, Biome.
 
 **Spec:** `docs/product-spec.md`
 
@@ -14,7 +14,7 @@
 
 - Do not copy source code, shader code, naming, prose, or parameter tables from `Token-Gremlin/natural-disasters`.
 - Keep the application limited to real Helia/Kubo observations and explicitly label unmeasured values.
-- Preserve WebGPU-first startup, WebGL2 fallback, Rust/Zig WASM split, reduced-motion behavior, and keyboard/touch node cards.
+- Preserve WebGPU-first startup, Rust-only WASM, WebGL2 fallback, reduced-motion behavior, and keyboard/touch node cards.
 - No new runtime dependency unless it is required for the tested behavior and remains free for local/static deployment.
 - Every behavior change starts with a failing test and ends with unit, E2E, accessibility, and production-build verification.
 
@@ -91,4 +91,3 @@
 - [ ] Use a backend-compatible color node/material path or a tiny non-instanced fallback only when the backend cannot consume `instanceColor`.
 - [ ] Add the acknowledgement and the independent Peerstellation design rationale to README.
 - [ ] Run the complete quality, build, E2E, accessibility, Lighthouse, docs, and audit gates.
-

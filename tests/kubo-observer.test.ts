@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  disconnectedKuboPeerIds,
   MAX_KUBO_PEERS,
   MAX_KUBO_RESPONSE_BYTES,
   probeLocalKubo,
@@ -135,5 +136,20 @@ describe('probeLocalKubo', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(probeLocalKubo()).rejects.toMatchObject({ code: 'invalid' });
+  });
+});
+
+describe('disconnectedKuboPeerIds', () => {
+  it('emits only Kubo-only peers missing from a successful snapshot', () => {
+    const result = disconnectedKuboPeerIds(
+      new Set(['kubo-only', 'dual-source', 'still-present']),
+      new Set(['still-present']),
+      new Map<string, { readonly source: 'kubo' | 'both' }>([
+        ['kubo-only', { source: 'kubo' }],
+        ['dual-source', { source: 'both' }],
+        ['still-present', { source: 'kubo' }],
+      ]),
+    );
+    expect(result).toEqual(['kubo-only', 'dual-source']);
   });
 });
