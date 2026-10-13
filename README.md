@@ -95,6 +95,8 @@ npm run dev
 | `npm run deploy:cloudflare` | Wrangler で静的配信を更新 |
 | `npm run deploy:pinata` | `PINATA_JWT` がある時だけ CID をピン |
 
+本番 Worker と DNSLink の役割、リリース手順は [配信経路の説明](docs/deployment/site-delivery.md) を参照してください。
+
 GitHub Actions は pull request の検証だけを自動実行します。本番のCloudflare、Pinata、DNSLink更新は `workflow_dispatch` を明示的に実行した場合だけです。`main` へのpushだけで本番配信は始まりません。
 
 ### 操作と品質設定
