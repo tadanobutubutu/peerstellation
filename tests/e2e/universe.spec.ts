@@ -1074,13 +1074,18 @@ test('keeps every observatory layer separated across the responsive matrix', asy
           right: rectangle.right,
         };
       });
+      // A clipped, semantically available layer can have a zero-area
+      // parent rectangle. A line or point inside a layer is not overlap.
+      const hasArea = (candidate: (typeof rectangles)[number]) =>
+        candidate.left < candidate.right &&
+        candidate.top < candidate.bottom;
       const overlaps = rectangles.flatMap((rectangle, index) =>
         rectangles.slice(index + 1).flatMap((other) => {
           const horizontal =
             rectangle.left < other.right && other.left < rectangle.right;
           const vertical =
             rectangle.top < other.bottom && other.top < rectangle.bottom;
-          return horizontal && vertical
+          return hasArea(rectangle) && hasArea(other) && horizontal && vertical
             ? [`${rectangle.selector} overlaps ${other.selector}`]
             : [];
         }),
@@ -1089,7 +1094,9 @@ test('keeps every observatory layer separated across the responsive matrix', asy
     });
     expect(
       result.overlaps,
-      `${viewport.width}x${viewport.height} ${viewport.fontSize}`,
+      `${viewport.width}x${viewport.height} ${viewport.fontSize}: ${JSON.stringify(
+        result.rectangles,
+      )}`,
     ).toEqual([]);
   }
 });
