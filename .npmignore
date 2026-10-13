@@ -1,0 +1,15 @@
+# Local npm config may contain registry credentials.
+.npmrc
+
+# Local runtime credentials.
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+.wrangler/
+
+# Private keys and certificate bundles.
+*.key
+*.pem
+*.p12
+*.pfx
