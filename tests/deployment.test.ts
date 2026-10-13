@@ -200,22 +200,18 @@ describe('DNSLink deployment', () => {
 });
 
 describe('static deployment configuration', () => {
-  it('uses an asset-only Worker with exact production routes', async () => {
+  it('routes the production domain through the asset-serving Worker', async () => {
     const config = JSON.parse(await readFile('wrangler.jsonc', 'utf8')) as {
       assets?: { directory?: string };
       main?: string;
       routes?: Array<{ pattern?: string; zone_name?: string }>;
     };
 
-    expect(config.main).toBeUndefined();
+    expect(config.main).toBe('./worker/src/index.ts');
     expect(config.assets?.directory).toBe('./dist');
     expect(config.routes).toEqual([
       {
-        pattern: 'ipfsuniverse.xyz/*',
-        zone_name: 'ipfsuniverse.xyz',
-      },
-      {
-        pattern: 'www.ipfsuniverse.xyz/*',
+        pattern: '*ipfsuniverse.xyz/*',
         zone_name: 'ipfsuniverse.xyz',
       },
     ]);
