@@ -148,6 +148,11 @@
     "@node-datachannel/android-arm64": "0.33.4",
     "@puppeteer/browsers": "3.2.2",
     "puppeteer": "25.10.0",
-    "puppeteer-core": "25.10.0"
+    "puppeteer-core": "25.10.0",
+    "postcss-selector-parser@7.1.1": "7.1.6",
+    "uuid@13.0.0": "13.0.1",
+    "sharp@0.35.4": "0.35.5",
+    "undici@7.29.0": "7.29.1",
+    "qs@6.15.3": "6.16.0"
   }
 }
