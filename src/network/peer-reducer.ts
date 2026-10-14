@@ -98,18 +98,7 @@ function reduceRecord(
       return {
         ...seen,
         source: mergeSource(current?.source, observation.source ?? 'browser'),
-        ...(observation.protocols === undefined
-          ? {}
-          : { protocols: observation.protocols }),
-        ...(observation.agentVersion === undefined
-          ? {}
-          : { agentVersion: observation.agentVersion }),
-        ...(observation.protocolVersion === undefined
-          ? {}
-          : { protocolVersion: observation.protocolVersion }),
-        ...(observation.addressCount === undefined
-          ? {}
-          : { addressCount: observation.addressCount }),
+        ...identifiedFields(observation),
       };
     case 'connected':
       if (
@@ -129,18 +118,7 @@ function reduceRecord(
           ? {}
           : { relayPeerId: observation.relayPeerId }),
         source: mergeSource(current?.source, observation.source ?? 'browser'),
-        ...(observation.protocols === undefined
-          ? {}
-          : { protocols: observation.protocols }),
-        ...(observation.agentVersion === undefined
-          ? {}
-          : { agentVersion: observation.agentVersion }),
-        ...(observation.protocolVersion === undefined
-          ? {}
-          : { protocolVersion: observation.protocolVersion }),
-        ...(observation.addressCount === undefined
-          ? {}
-          : { addressCount: observation.addressCount }),
+        ...identifiedFields(observation),
         ...(current?.status === 'connected'
           ? {}
           : { latencyMs: undefined, latencyObservedAt: undefined }),
@@ -204,6 +182,35 @@ function reduceRecord(
         latencyObservedAt: observation.observedAt,
       };
   }
+}
+
+type IdentifiedPeerObservation = Extract<
+  PeerObservation,
+  { type: 'connected' | 'identified' }
+>;
+
+type IdentifiedPeerFields = Pick<
+  PeerRecord,
+  'protocols' | 'agentVersion' | 'protocolVersion' | 'addressCount'
+>;
+
+function identifiedFields(
+  observation: IdentifiedPeerObservation,
+): Partial<IdentifiedPeerFields> {
+  return {
+    ...(observation.protocols === undefined
+      ? {}
+      : { protocols: observation.protocols }),
+    ...(observation.agentVersion === undefined
+      ? {}
+      : { agentVersion: observation.agentVersion }),
+    ...(observation.protocolVersion === undefined
+      ? {}
+      : { protocolVersion: observation.protocolVersion }),
+    ...(observation.addressCount === undefined
+      ? {}
+      : { addressCount: observation.addressCount }),
+  };
 }
 
 function mergeSource(

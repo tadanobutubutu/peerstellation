@@ -1299,7 +1299,11 @@ test('has no automated WCAG A or AA violations in the initial state', async ({
 }) => {
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-scene', 'ready');
-  await expect(page.locator('[aria-live]')).toHaveCount(3);
+  await expect(page.locator('#kubo-status')).toHaveAttribute(
+    'aria-live',
+    'polite',
+  );
+  await expect(page.locator('[aria-live]')).toHaveCount(4);
   await expectNoAutomatedAccessibilityViolations(page);
 });
 
