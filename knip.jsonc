@@ -15,7 +15,6 @@
     "@babel/eslint-parser",
     "@babel/plugin-syntax-typescript",
     "@eslint/js",
-    "@percy/cli",
     "@storybook/addon-a11y",
     "@storybook/addon-essentials",
     "@storybook/web-components-vite",
