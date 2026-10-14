@@ -29,10 +29,10 @@ IPFS/libp2p固有の検査（CID/CAR/Trustless、Helia Identify、Kubo、Gateway
 - PageSpeed Insights API: `PAGESPEED_API_KEY` と対象 URL。
 - Chrome DevTools trace/DWARF: Chrome DevTools MCP またはローカル Chrome。`performance_start_trace` が無い場合は Playwright trace を代替として記録する。
 - Chromatic: `CHROMATIC_PROJECT_TOKEN`。
-- Percy: `PERCY_TOKEN`。
+- Percy CLI は依存ツリーに高深刻度の脆弱性があり、更新候補は脆弱な PDF.js を追加するため除外した。現行 workflow からの利用はなく、ローカルの BackstopJS は維持する。
 - OWASP ZAP: `npm run security:zap`。公式の `zap-baseline.py`、`zap.sh`、または公式Docker/Podmanイメージが環境にある場合だけ受動ベースラインを実行する。pipで名前の似た非公式スクリプトを入れない。
 - `cargo-audit`、`cargo-deny`、`cargo-vet`、`wasm-opt`、`twiggy`、`wasm-snip`、`wasm-tools`: PATH 上にある場合のみ実行する。
-- BackstopJS、Cypress、Storybook: ヘッドレスブラウザを取得できる場合に実行する。Puppeteer は安全な25系へ override し、`npm audit --audit-level=high` の high/critical 0件を維持する。Percy/Markuplint の開発専用 moderate advisory は本番 audit と分離して報告する。
+- BackstopJS、Cypress、Storybook: ヘッドレスブラウザを取得できる場合に実行する。Puppeteer は安全な25系へ override する。`npm audit --omit=dev --audit-level=high` は本番依存を検査し、開発依存の findings も全体 audit で別途追跡する。
 - CSP Evaluator: Google実装のローカル移植を `security:csp-evaluator` で毎回実行する。CSP4の `wasm-unsafe-eval` だけは旧Evaluatorの誤検知として明示的に除外し、静的監査で検証する。
 - `test:renderer` は `benchmarks/renderer-workload.json` に固定した同一のヘッドレスChrome、1280×720、DPR 1、256/512/1024ノード、各240フレームを3回、実際の製品ページで測る。Rust `wgpu` は背景・線・ノードの3パスを本番で使い、Three.jsは診断用およびGPU初期化失敗時の機能等価フォールバックとして比較する。RAF値には合成・スケジューラーも含まれるため、単一端末の数字だけで速度倍率を断定しない。
 
@@ -56,4 +56,4 @@ Rust版は物理・集計だけでなく、本番の3D描画と出荷WASM ABIを
 
 ### 外部サービスの扱い
 
-PageSpeed Insights API、Chromatic、Percyは無料試用や無料枠があっても、無期限・無制限の匿名APIを保証しない。`quality:all` は資格情報が無い時に `skip` と記録し、ローカルのLighthouse、Playwright、Storybook、BackstopJSを必須検査として使う。公開URLとキーを設定した環境だけ `npm run test:pagespeed` を実行する。
+PageSpeed Insights API と Chromatic は無料試用や無料枠があっても、無期限・無制限の匿名APIを保証しない。`quality:all` は資格情報が無い時に `skip` と記録し、ローカルのLighthouse、Playwright、Storybook、BackstopJSを必須検査として使う。公開URLとキーを設定した環境だけ `npm run test:pagespeed` を実行する。

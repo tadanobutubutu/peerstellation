@@ -362,11 +362,6 @@ const definitions: readonly CheckDefinition[] = [
     'chromatic',
     '--exit-zero-on-changes',
   ]),
-  optionalTokenCheck('percy', 'browser', 'PERCY_TOKEN', [
-    'percy',
-    'snapshot',
-    'artifacts/storybook-static',
-  ]),
   optionalTokenCheck('pagespeed-insights', 'performance', 'PAGESPEED_API_KEY', [
     'npm',
     'run',
