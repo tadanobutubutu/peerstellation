@@ -59,6 +59,35 @@ describe('peer observation reducer', () => {
     expect(state.kuboConnectedCount).toBe(0);
   });
 
+  it('preserves identification metadata when a later connection omits it', () => {
+    const identified = reducePeerEvent(emptyPeerState(), {
+      type: 'identified',
+      peerId: '12D3KooWIdentified',
+      observedAt: 10,
+      protocols: ['/ipfs/id/1.0.0'],
+      agentVersion: 'kubo/0.27.0',
+      protocolVersion: 'ipfs/0.1.0',
+      addressCount: 2,
+    });
+    const connected = reducePeerEvent(identified, {
+      type: 'connected',
+      peerId: '12D3KooWIdentified',
+      observedAt: 20,
+      direction: 'outbound',
+      transport: 'websocket',
+    });
+
+    expect(connected.peers.get('12D3KooWIdentified')).toMatchObject({
+      status: 'connected',
+      protocols: ['/ipfs/id/1.0.0'],
+      agentVersion: 'kubo/0.27.0',
+      protocolVersion: 'ipfs/0.1.0',
+      addressCount: 2,
+    });
+    expect(connected.connectedCount).toBe(1);
+    expect(connected.revision).toBe(2);
+  });
+
   it('keeps local Kubo connections out of the browser-live count', () => {
     const state = reduce([
       {
