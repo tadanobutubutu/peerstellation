@@ -79,8 +79,8 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
-    "@babel/core": "8.0.1",
-    "@babel/eslint-parser": "8.0.1",
+    "@babel/core": "8.0.7",
+    "@babel/eslint-parser": "8.0.7",
     "@babel/plugin-syntax-typescript": "8.0.3",
     "@biomejs/biome": "2.5.15",
     "@doyensec/csp-evaluator": "1.0.3",
