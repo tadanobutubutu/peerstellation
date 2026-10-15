@@ -120,7 +120,7 @@
     "tsx": "^4.23.15",
     "typescript": "7.0.2",
     "valibot": "1.4.2",
-    "vite": "^8.3.3",
+    "vite": "^8.3.4",
     "vitest": "^4.0.0",
     "web-vitals": "6.2.1",
     "wrangler": "4.131.0"
