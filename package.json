@@ -141,7 +141,7 @@
     "helia": "7.1.10",
     "multiformats": "14.0.5",
     "three": "0.185.1",
-    "zod": "4.6.1"
+    "zod": "4.6.7"
   },
   "overrides": {
     "@libp2p/gossipsub": "17.1.1",
