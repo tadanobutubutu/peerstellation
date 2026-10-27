@@ -113,7 +113,7 @@
     "purgecss": "8.0.0",
     "rollup-plugin-visualizer": "7.1.1",
     "start-server-and-test": "3.0.12",
-    "storybook": "10.6.0",
+    "storybook": "10.6.2",
     "stylelint": "17.14.1",
     "stylelint-config-standard": "40.0.0",
     "tailwindcss": "4.3.3",
