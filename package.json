@@ -94,7 +94,7 @@
     "@types/node": "^24.10.0",
     "@types/pa11y": "5.3.7",
     "@types/three": "0.185.4",
-    "arktype": "2.2.2",
+    "arktype": "2.2.9",
     "backstopjs": "6.3.25",
     "chromatic": "18.7.2",
     "cypress": "16.0.0",
